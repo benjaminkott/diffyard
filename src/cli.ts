@@ -26,9 +26,8 @@ import {
   shortPath,
   truncate,
 } from './ui.js';
+import { VERSION } from './version.js';
 import type { Comparison, Config, RunResult } from './types.js';
-
-const VERSION = '0.1.0';
 
 const OPTIONS = {
   out: { type: 'string' as const, short: 'o' },

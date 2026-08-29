@@ -67,12 +67,23 @@ can leak — and the tarball records where it was built without being asked.
 
 A trusted publisher is configured on a package, and npm has no package until
 something is published — so the first publish cannot itself be a trusted one.
-It goes up by hand, with a granular access token made for that one publish and
-revoked afterwards:
+That version goes up by hand:
 
 ```bash
+npm login    # the web login, with 2FA
 npm publish
 ```
+
+A token would do for the publish and not for the step after it: `npm trust`
+requires two-factor authentication on the account and refuses both a granular
+access token that bypasses 2FA and basic auth. One login covers both, and
+leaves nothing behind to revoke.
+
+**Do not tag that version.** Pushing `v0.1.0` starts the release workflow,
+which would publish the same version a second time and fail — and creating the
+tag through `gh release create` fires the same event. The bootstrap version
+therefore has no release page, and the first tagged release is the one after
+it. That is the whole cost of npm having no way to reserve a name.
 
 Then, from npm CLI 11.10.0 or later, as a maintainer of the package:
 

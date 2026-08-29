@@ -1,0 +1,69 @@
+{
+  "name": "diffyard",
+  "version": "0.1.0",
+  "description": "Visual regression testing by comparing two URLs side by side",
+  "keywords": [
+    "visual-regression",
+    "screenshot",
+    "diff",
+    "playwright",
+    "testing",
+    "staging",
+    "dom-diff",
+    "cli"
+  ],
+  "homepage": "https://github.com/benjaminkott/diffyard#readme",
+  "bugs": "https://github.com/benjaminkott/diffyard/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/benjaminkott/diffyard.git"
+  },
+  "license": "MIT",
+  "author": "Benjamin Kott <benjamin.kott@outlook.com>",
+  "type": "module",
+  "bin": {
+    "diffyard": "./bin/diffyard.mjs",
+    "diffyard-mcp": "./bin/diffyard-mcp.mjs"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "!dist/**/*.map",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "npm run build && npm run bundle && node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "build": "tsc",
+    "bundle": "node build.mjs",
+    "dev": "tsc --watch",
+    "screenshots": "node scripts/screenshots.mjs",
+    "notes": "node scripts/notes.mjs",
+    "diffyard": "node ./bin/diffyard.mjs",
+    "prepare": "npm run build && npm run bundle",
+    "prepublishOnly": "npm run build && npm run bundle"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "pixelmatch": "^7.1.0",
+    "playwright": "^1.62.1",
+    "pngjs": "^7.0.0",
+    "yaml": "^2.8.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pngjs": "^6.0.5",
+    "ajv": "^8.20.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,68 @@
+name: Release
+
+# Fires only on a tag pushed by hand, so publishing stays a deliberate act.
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Creating the release page.
+      contents: write
+      # The OIDC token npm trades for publish rights. This is the whole of the
+      # authentication: no NPM_TOKEN, nothing stored on the repository.
+      id-token: write
+
+    steps:
+      # The whole history: the notes are written from the commits since the
+      # last released tag, and a shallow clone has none of them.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # v6 is the first that carries out the trusted-publishing handshake, and
+      # npm has to be 11.5.1 or newer to understand it — Node 24 brings one.
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # The tag is the single source of truth for the version; a mismatch here
+      # means the tag and the package would disagree once published.
+      - name: Check the tag matches the version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p 'require("./package.json").version')"
+          [ "$tag" = "$version" ] || {
+            echo "Tag $GITHUB_REF_NAME does not match package version $version" >&2
+            exit 1
+          }
+
+      # Provenance is recorded on its own when publishing this way, so there is
+      # no --provenance to pass and no token to hand over.
+      - run: npm publish
+
+      # The same command a maintainer runs before pushing the tag, so the page
+      # cannot say something they did not read.
+      - run: npm run notes -- "$GITHUB_REF_NAME"
+
+      - name: Publish the release page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file .out/notes.md \
+            --verify-tag

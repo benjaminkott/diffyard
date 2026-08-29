@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=../diffyard.schema.json
+# A local ddev copy against the live site — the usual shape of a relaunch check.
+
+compare:
+  a:
+    url: https://example.ddev.site/
+    label: ddev
+  b:
+    url: https://example.com/
+    label: live
+
+output:
+  dir: .diffyard-report
+  title: example.com — ddev vs. live
+
+browser:
+  engine: chromium
+  # A local ddev site uses a self-signed certificate.
+  ignoreHTTPSErrors: true
+  viewports:
+    mobile:  { width: 375, height: 812 }
+    desktop: { width: 1440, height: 900 }
+
+timeouts:
+  action: 30000
+  comparison: 120000
+  run: 1800000
+
+diff:
+  threshold: 0.001
+  # A carousel rotates on its own, so the two sides rarely show the same slide.
+  mask:
+    - ".carousel"
+
+stability:
+  retries: 1
+
+beforeEach:
+  # Accepted, not removed: the page is then captured the way a visitor sees it,
+  # and no overlay is left to swallow the clicks of later steps. `when` means it
+  # only runs when the banner is there, `once` that the decision sticks.
+  - name: accept consent
+    when: "#uc-btn-accept-banner"
+    once: true
+    steps:
+      - click: "#uc-btn-accept-banner"
+      - waitForTimeout: 500
+
+markup:
+  enabled: true
+  # Cache busters and asset hashes differ between two installations and would
+  # otherwise drown the real markup changes.
+  ignoreAttributes:
+    - nonce
+    - integrity
+  ignoreSelectors:
+    - script
+
+scenarios:
+  # A bare path is a scenario named after it, run in every viewport above.
+  - /
+  - /products
+  - /about
+  - /contact
+
+  - name: home-mobile-menu-open
+    path: /
+    viewports: [mobile]
+    fullPage: false
+    steps:
+      - click: ".navbar-toggler"
+      - waitFor: "#mainnavigation.show"
+      - waitForTimeout: 400
+
+  - name: home-dropdown-open
+    path: /
+    viewports: [desktop]
+    fullPage: false
+    steps:
+      - click: ".nav-link-toggle"
+      - waitFor: ".dropdown-menu.show"
+      - waitForTimeout: 300

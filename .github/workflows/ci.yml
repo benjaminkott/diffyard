@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # The report tests open the generated HTML in a real browser, so the
+      # browser has to be there before they run.
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run typecheck
+
+      - run: npm test

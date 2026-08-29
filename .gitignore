@@ -1,0 +1,7 @@
+.out/
+*.tsbuildinfo
+.mcp.json
+.diffyard-report/
+bin/
+dist/
+node_modules/

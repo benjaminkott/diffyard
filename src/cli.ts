@@ -26,7 +26,7 @@ import {
   shortPath,
   truncate,
 } from './ui.js';
-import { VERSION } from './version.js';
+import { VERSION } from './manifest.js';
 import type { Comparison, Config, RunResult } from './types.js';
 
 const OPTIONS = {

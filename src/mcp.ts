@@ -6,7 +6,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { EXAMPLE_CONFIG } from './example.js';
 import { STEP_REFERENCE } from './reference.js';
 import { schemaJson } from './schema.js';
-import { VERSION } from './version.js';
+import { VERSION } from './manifest.js';
 
 /**
  * The MCP server is a signpost, not a second implementation.

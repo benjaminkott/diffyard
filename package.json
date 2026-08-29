@@ -10,7 +10,9 @@
     "testing",
     "staging",
     "dom-diff",
-    "cli"
+    "cli",
+    "mcp",
+    "model-context-protocol"
   ],
   "homepage": "https://github.com/benjaminkott/diffyard#readme",
   "bugs": "https://github.com/benjaminkott/diffyard/issues",

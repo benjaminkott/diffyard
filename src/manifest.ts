@@ -15,5 +15,11 @@ import { readFileSync } from 'node:fs';
  */
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
+export const NAME: string = manifest.name;
 export const VERSION: string = manifest.version;
 export const HOMEPAGE: string = manifest.homepage;
+
+/** The repository as a browser can open it, not as git clones it. */
+export const REPOSITORY: string = String(manifest.repository?.url ?? '')
+  .replace(/^git\+/, '')
+  .replace(/\.git$/, '');

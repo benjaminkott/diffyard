@@ -27,6 +27,8 @@ import {
   truncate,
 } from './ui.js';
 import { VERSION } from './manifest.js';
+import { checkForUpdate } from './update.js';
+import type { Update } from './update.js';
 import type { Comparison, Config, RunResult } from './types.js';
 
 const OPTIONS = {
@@ -184,6 +186,10 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
     if (!quiet) process.stdout.write(text);
   };
 
+  // Started here and read at the end: a lookup that overlaps the run is one
+  // nobody waits for.
+  const update = checkForUpdate();
+
   write(header(config));
 
   const progress = new Progress({
@@ -251,6 +257,7 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
   const artifact = await writeArtifact(merged, config, values);
 
   write(summary(result, artifact, width, merged));
+  write(updateNotice(await update));
 
   if (values['no-fail'] === true) return 0;
   if (result.errored > 0) return 2;
@@ -514,6 +521,7 @@ async function initConfig(file: string): Promise<number> {
  * config from it.
  */
 async function exploreCommand(url: string, values: Values): Promise<number> {
+  const update = checkForUpdate();
   let viewport = { width: 1440, height: 900 };
 
   if (typeof values.viewport === 'string') {
@@ -536,6 +544,7 @@ async function exploreCommand(url: string, values: Values): Promise<number> {
 
     const compareWith = typeof values['compare-with'] === 'string' ? values['compare-with'] : undefined;
     process.stdout.write(`${renderExploration(report, url, compareWith, values.insecure === true)}\n`);
+    process.stdout.write(updateNotice(await update));
     return 0;
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\n`);
@@ -777,6 +786,23 @@ function summary(
   if (report) lines.push(`\n  ${paint('bold', 'Report')}  ${report[1]}\n`);
 
   return lines.join('');
+}
+
+/**
+ * That a newer diffyard exists, said as quietly as it deserves.
+ *
+ * Last of everything, in grey, two lines: the result of the run is what was
+ * asked for, and this is a footnote under it. `DIFFYARD_NO_UPDATE_CHECK`
+ * removes it, and it never appears in CI.
+ */
+function updateNotice(update: Update | null): string {
+  if (!update) return '';
+
+  return (
+    `\n  ${paint('grey', `diffyard ${update.current} → ${update.latest} is out`)}\n` +
+    `  ${paint('grey', update.command)}\n` +
+    (update.notes ? `  ${paint('grey', update.notes)}\n` : '')
+  );
 }
 
 function visibleLength(text: string): number {

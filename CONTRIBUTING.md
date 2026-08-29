@@ -65,6 +65,7 @@ carries a current bundle.
 | `src/cli.ts` | `run`, `explore`, `init`, `schema` |
 | `src/explore.ts` | Inspects a page and drafts a config from what it finds |
 | `src/mcp.ts` | MCP server: hands out the CLI path and how to use it |
+| `src/update.ts` | Whether a newer diffyard has been published |
 | `test/` | `node:test`, TypeScript runs natively on Node 24 |
 | `docs/` | The long explanations the README links out to |
 | `docs/demo/` | Two copies of a small site that differ on purpose |
@@ -85,6 +86,13 @@ does is a command line, so the server hands out the path and the usage and
 stops there. Resist adding tools that run comparisons or read results: an
 agent with a shell does both better, with progress it can see and files it can
 open.
+
+The update check is a footnote and never an event. It asks the registry once a
+day, times out in well under two seconds, and answers "nothing to say" to every
+failure — offline, blocked, a registry that is down. A run must never be
+slower, noisier or less likely to finish because the version behind it moved,
+and `CI` silences the notice outright: a pipeline pins its versions and nobody
+reads its scrollback for advice.
 
 Alignment may only ever improve a number. Where matching rows up does not
 reduce the difference, the positional comparison stands — otherwise two

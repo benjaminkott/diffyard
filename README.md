@@ -494,6 +494,27 @@ diffyard schema [file.json]
 Exit codes: `0` no differences, `1` at least one comparison over its threshold,
 `2` a capture errored or the config is invalid.
 
+Under the result, diffyard says so when a newer version has been published —
+the step from the version in hand to the one that is out, the command that gets
+it, and the release page that says what changed:
+
+```
+  diffyard 0.1.3 → 0.2.0 is out
+  npm install -g diffyard@latest
+  https://github.com/benjaminkott/diffyard/releases/tag/v0.2.0
+```
+
+The command is the one for how this copy was installed: `npm install -g` for a
+global install, `npm install diffyard@latest` where the project being checked
+carries it as a dependency, `npx diffyard@latest` for a run out of the npx
+cache, and `git pull && ./install.sh` for a checkout.
+
+The registry is asked at most once a day and the answer kept in
+`~/.cache/diffyard/update.json` (or under `XDG_CACHE_HOME`); a lookup that
+fails is silent and is not tried again until the next day, so being offline
+costs nothing. `DIFFYARD_NO_UPDATE_CHECK=1` turns it off, as does the
+conventional `NO_UPDATE_NOTIFIER`, and it never appears when `CI` is set.
+
 ## From other tools
 
 ### As an MCP server

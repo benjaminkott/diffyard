@@ -144,6 +144,10 @@ That writes `.out/notes.md`, and the release job runs the same command and hands
 its file to `gh release create`. So a document on a desk and a step in a
 workflow cannot say different things.
 
+Everyone still on the previous version hears about the new one from their next
+run, within a day: the registry is what the check reads, so the notice starts
+the moment the publish lands, not the moment the tag is pushed.
+
 GitHub's own `--generate-notes` is what this replaced. It lists pull requests;
 the work arrives as commits, and their subjects are written to be read.
 

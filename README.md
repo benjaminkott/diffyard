@@ -80,6 +80,21 @@ first line points at, so your editor validates and completes it while you type;
 `diffyard schema` writes just that file. Both land in the current directory, as
 does the report — nothing is written back to the diffyard checkout.
 
+Or hand the two addresses to an agent and let it write the config. `diffyard`
+ships an MCP server that tells the agent where the command is and how to drive
+it; the agent explores the site it does not know, drafts the config against the
+schema, runs the comparison and reads the results:
+
+```bash
+claude mcp add diffyard -s user -- diffyard-mcp
+```
+
+> Compare our staging site against production — https://example.ddev.site/
+> and https://example.com/ — and tell me what changed.
+
+See [Driving it from an agent](docs/with-an-agent.md) for the other clients and
+what a session looks like.
+
 ```
 diffyard 0.1.0
   A ddev  https://example.ddev.site/
@@ -499,6 +514,10 @@ that can run a shell can run the command itself, where it sees progress per
 scenario instead of a tool call that returns nothing for minutes — and the
 results are files it can open directly.
 
+[Driving it from an agent](docs/with-an-agent.md) has the JSON form the other
+clients use, what the tool and the three resources answer with, and a session
+from two addresses to a finding.
+
 ### As a library
 
 ```js
@@ -523,6 +542,8 @@ await writeFile('report.html', html);
   one file per comparison
 - [Reusing a side from an earlier run](docs/reusing-shots.md) — fingerprints,
   what expires a shot, and how the run says so
+- [Driving it from an agent](docs/with-an-agent.md) — connecting the MCP server,
+  what it answers with, and why nothing in it runs a comparison
 
 ## License
 

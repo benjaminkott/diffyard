@@ -1,3 +1,4 @@
+
 /**
  * JSON Schema for the config file.
  *
@@ -6,6 +7,11 @@
  * produces errors that name the option and say what to do, which a schema
  * validator cannot.
  */
+
+import { REPOSITORY } from './manifest.js';
+
+/** The repository's own files, as a fetch sees them rather than a browser. */
+const RAW = `${REPOSITORY.replace('https://github.com/', 'https://raw.githubusercontent.com/')}/main`;
 
 const SELECTOR_LIST = {
   description: 'A CSS selector, or a list of them.',
@@ -557,6 +563,17 @@ export const CONFIG_SCHEMA = {
 } as const;
 
 export const SCHEMA_FILENAME = 'diffyard.schema.json';
+
+/**
+ * The same schema, where an editor can fetch it.
+ *
+ * A copy in every repository that uses diffyard is a copy that goes stale the
+ * next time a setting is added, and it shows up as a false complaint about a
+ * key that is perfectly valid. This one always describes the current release;
+ * the local copy is still there for working offline, and for pinning a config
+ * to the version it was written against.
+ */
+export const SCHEMA_URL = `${RAW}/diffyard.schema.json`;
 
 export function schemaJson(): string {
   return `${JSON.stringify(CONFIG_SCHEMA, null, 2)}\n`;

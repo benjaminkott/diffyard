@@ -4,7 +4,8 @@
 export const EXAMPLE_CONFIG = `# yaml-language-server: $schema=./diffyard.schema.json
 # diffyard — compares two URLs against each other, scenario by scenario.
 # The schema on the first line makes your editor validate and complete this
-# file; run \`diffyard schema\` to write it again.
+# file; run \`diffyard schema\` to write it again. To keep no copy at all, point
+# that line at the published schema instead — \`diffyard schema\` prints it.
 
 compare:
   # Short form: just the URL.

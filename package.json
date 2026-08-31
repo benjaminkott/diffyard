@@ -36,6 +36,7 @@
     "bin",
     "dist",
     "!dist/**/*.map",
+    "diffyard.schema.json",
     "README.md"
   ],
   "engines": {

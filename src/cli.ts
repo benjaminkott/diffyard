@@ -11,7 +11,7 @@ import { Progress } from './progress.js';
 import { renderReport } from './report/index.js';
 import { INDEX_FILE, POOL_DIR, caseFile, forDelivery, readCase, withDetail } from './report/pool.js';
 import type { CaseDetail } from './report/pool.js';
-import { SCHEMA_FILENAME, schemaJson } from './schema.js';
+import { SCHEMA_FILENAME, SCHEMA_URL, schemaJson } from './schema.js';
 import { run } from './runner.js';
 import { ReuseError } from './reuse.js';
 import {
@@ -773,7 +773,9 @@ async function writeSchema(file: string): Promise<number> {
   process.stdout.write(
     `\n  ${MARK.pass()} ${shortPath(path)}\n\n` +
       `  ${paint('grey', 'Reference it from the first line of your config:')}\n` +
-      `  # yaml-language-server: $schema=./${basename(path)}\n\n`
+      `  # yaml-language-server: $schema=./${basename(path)}\n\n` +
+      `  ${paint('grey', 'Or point at it without keeping a copy, which never goes stale:')}\n` +
+      `  ${paint('grey', `# yaml-language-server: $schema=${SCHEMA_URL}`)}\n\n`
   );
   return 0;
 }

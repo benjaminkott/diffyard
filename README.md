@@ -80,6 +80,17 @@ first line points at, so your editor validates and completes it while you type;
 `diffyard schema` writes just that file. Both land in the current directory, as
 does the report — nothing is written back to the diffyard checkout.
 
+A copy in your repository goes stale the next time a setting is added, and then
+complains about a key that is perfectly valid. To keep none, point that first
+line at the published schema instead — it always describes the current release:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/benjaminkott/diffyard/main/diffyard.schema.json
+```
+
+The local copy is still the better answer for working offline, and for pinning
+a config to the version it was written against.
+
 Or hand the two addresses to an agent and let it write the config. `diffyard`
 ships an MCP server that tells the agent where the command is and how to drive
 it; the agent explores the site it does not know, drafts the config against the

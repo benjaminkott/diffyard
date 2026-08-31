@@ -175,9 +175,14 @@ export function shell(result: RunResult, config: Config, data: string): string {
 <template id="rerun-template">
   <div class="rerun">
     <span class="rerun__label"></span>
+    <div class="rerun__pick" role="group" aria-label="What to capture again"></div>
     <code></code>
     <button type="button">Copy</button>
   </div>
+</template>
+
+<template id="rerun-choice-template">
+  <button type="button"></button>
 </template>
 
 <template id="card-template">

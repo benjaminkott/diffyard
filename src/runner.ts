@@ -150,7 +150,7 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
 
   return {
     commonMarkup: common,
-    command: runCommandFor(config, runId),
+    commands: runCommandsFor(config, runId),
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
@@ -416,28 +416,42 @@ function commandFor(config: Config, runId: string, id: string): string {
 }
 
 /**
- * The same line for the whole run rather than one finding.
+ * The same lines for the whole run rather than one finding.
  *
  * A report that says how to redo one case but not all of them makes the common
  * move -- fix the deployment, look again at everything -- the one you have to
  * work out by hand.
  *
- * It carries no --into. Repeating a run is running it: where the results land
+ * They carry no --into. Repeating a run is running it: where the results land
  * is the config's business, and a suite that fixes `output.runId` has already
  * said. One that does not gets a new folder, which is what a fresh run is.
+ *
+ * The other two capture one side and take the other from this run. Usually
+ * only one side has moved -- a deployment on the new system, an edit on the
+ * old -- and photographing the other again is half a run spent proving it did
+ * not change.
  */
-export function runCommandFor(config: Config, runId: string): string {
-  return line(config, runId, []);
+export function runCommandsFor(config: Config, runId: string): RunResult['commands'] {
+  const keeping = (side: Side) => [`--reuse ${side}`, `--reuse-from ${runId}`];
+
+  return {
+    all: line(config, runId, []),
+    // To capture A again, B is the side that is kept.
+    a: line(config, runId, keeping('b'), false),
+    b: line(config, runId, keeping('a'), false),
+  };
 }
 
 /**
  * It mirrors the run it came from rather than improving on it: a run that
  * reused a side says so, pointing at this run's own copy of that side.
  */
-function line(config: Config, runId: string, flags: string[]): string {
+function line(config: Config, runId: string, flags: string[], mirrorReuse = true): string {
   const parts = ['diffyard run', quote(config.file), ...flags];
 
-  if (config.reuse.sides.length > 0) {
+  // A line that already names what to reuse is not also given the run's own
+  // rule: it is here to say something different from what the run did.
+  if (mirrorReuse && config.reuse.sides.length > 0) {
     parts.push(`--reuse ${config.reuse.sides.join(',')}`, `--reuse-from ${runId}`);
   }
 

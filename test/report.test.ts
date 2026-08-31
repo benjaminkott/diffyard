@@ -128,7 +128,11 @@ const RESULT: RunResult = {
   skipped: 0,
   outDir: '',
   runId: 'test-run',
-  command: 'diffyard run diffyard.yaml',
+  commands: {
+    all: 'diffyard run diffyard.yaml',
+    a: 'diffyard run diffyard.yaml --reuse b --reuse-from test-run',
+    b: 'diffyard run diffyard.yaml --reuse a --reuse-from test-run',
+  },
   reuse: null,
   comparisons: [
     comparison(),
@@ -378,6 +382,27 @@ for (const scheme of ['light', 'dark'] as const) {
       assert.equal(await line.count(), 1, 'the run has its own line, once');
       assert.equal(await line.textContent(), 'diffyard run diffyard.yaml',
         'no --into: repeating a run is running it, and the config says where it lands');
+      await page.close();
+    });
+
+    it('offers to capture one side and keep the other', async () => {
+      const { page } = await open(scheme);
+
+      // Usually only one side moved. Photographing the other again is half a
+      // run spent proving it did not change.
+      const choices = page.locator('#run-command .rerun__pick button');
+      assert.deepEqual(await choices.allTextContents(), ['both sides', 'A', 'B']);
+
+      const line = page.locator('#run-command code');
+      await choices.nth(1).click();
+      assert.match((await line.textContent()) ?? '', /--reuse b --reuse-from test-run/,
+        'capturing A again means keeping B');
+
+      await choices.nth(2).click();
+      assert.match((await line.textContent()) ?? '', /--reuse a --reuse-from test-run/);
+
+      await choices.nth(0).click();
+      assert.equal(await line.textContent(), 'diffyard run diffyard.yaml');
       await page.close();
     });
 

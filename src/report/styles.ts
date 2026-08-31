@@ -190,11 +190,11 @@ code { font-family: var(--mono); font-size: var(--t-sm); }
 }
 :root[data-view="detail"] .controls { display: none; }
 
-.filters, .modes {
+.filters, .modes, .rerun__pick {
   display: inline-flex; padding: 2px; gap: 2px;
   border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--raised);
 }
-.filters button, .modes button {
+.filters button, .modes button, .rerun__pick button {
   appearance: none; border: 0; border-radius: 4px; background: transparent; color: var(--muted);
   padding: 5px 10px; font: inherit; font-size: var(--t-sm); font-weight: 500;
   cursor: pointer; white-space: nowrap; transition: background var(--ease), color var(--ease);
@@ -233,6 +233,8 @@ select:hover, input[type=search]:hover { border-color: var(--border-strong); }
    paragraph -- sitting high, growing the head by half at some widths and not
    others. Below it, the head is the same height whatever the window does. */
 #run-command { flex-basis: 100%; }
+.rerun__pick { flex: none; }
+.rerun__pick button.is-active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
 #run-command .rerun { margin-top: var(--s-1); }
 .overview__head h2 { margin: 0; font-size: var(--t-lg); font-weight: 620; letter-spacing: -.01em; }
 .overview__hint { margin: 0; color: var(--muted); font-size: var(--t-sm); }

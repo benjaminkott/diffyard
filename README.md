@@ -449,6 +449,17 @@ all of it again. It carries no `--into`, because repeating a run is running it:
 a config that fixes `output.runId` has already said where the results land, and
 one that does not gets a new folder, which is what a fresh run is.
 
+Beside it are the same run with one side kept:
+
+```
+diffyard run diffyard.yaml --reuse b --reuse-from 2026-08-28_09-16-03-24f7ce
+```
+
+Usually only one side has moved — a deployment on the new system, an edit on
+the old — and photographing the other again is half a run spent proving it did
+not change. To capture side A again, side B is the one kept, which is what
+`--reuse b` says.
+
 The report stays honest about having been assembled over time: every card says
 when its own picture was taken, and anything newer than the run reads
 *Refreshed* — see [What a card says](docs/the-report.md#what-a-card-says).

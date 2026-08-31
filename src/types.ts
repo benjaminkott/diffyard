@@ -573,14 +573,25 @@ export interface RunResult {
    */
   commonMarkup: string[];
   /**
-   * What to run to do this whole run again, into this same report.
+   * What to run to do this whole run again.
    *
-   * The per-comparison `command` refreshes one finding; this refreshes all of
-   * them. Both are here for the same reason: the flags that matter are the
-   * ones nobody would reconstruct by hand -- where the config file was, which
-   * report to write back into, and which side came from an earlier run.
+   * The per-comparison `command` refreshes one finding; these refresh all of
+   * them. They are here for the same reason: the flags that matter are the
+   * ones nobody would reconstruct by hand -- where the config file was, and
+   * which side to take from this run rather than capture again.
    */
-  command: string;
+  commands: {
+    /** Both sides captured again. */
+    all: string;
+    /**
+     * Side A captured again, side B taken from this run, and the other way
+     * round. When only one side moved -- a deployment on the new system, a
+     * content change on the old -- capturing the other again is half a run
+     * spent proving it did not change.
+     */
+    a: string;
+    b: string;
+  };
   /**
    * Set when a side was taken from an earlier run, so a reader of the numbers
    * can tell whether they were measured against a fresh reference.

@@ -190,7 +190,14 @@ export const SCRIPT = `
    * again; without this that is either a full run or working the flags out by
    * hand, once per finding.
    */
-  function rerun(command, label) {
+  /**
+   * A line to paste, with the button that takes it.
+   *
+   * Choices turn it into several lines behind one button: the same run, asked
+   * for differently. Copy reads what is on screen rather than what it was
+   * built with, so switching between them needs only the text.
+   */
+  function rerun(command, label, choices) {
     const container = clone('rerun-template');
 
     const what = container.querySelector('.rerun__label');
@@ -200,10 +207,27 @@ export const SCRIPT = `
     const line = container.querySelector('code');
     line.textContent = command;
 
-    const copy = container.querySelector('button');
+    const pick = container.querySelector('.rerun__pick');
+    if (!choices || choices.length < 2) {
+      pick.remove();
+    } else {
+      for (const [at, choice] of choices.entries()) {
+        const button = clone('rerun-choice-template');
+        button.textContent = choice.label;
+        button.title = choice.title || '';
+        if (at === 0) button.classList.add('is-active');
+        button.addEventListener('click', () => {
+          pick.querySelectorAll('button').forEach((other) => other.classList.toggle('is-active', other === button));
+          line.textContent = choice.command;
+        });
+        pick.append(button);
+      }
+    }
+
+    const copy = container.querySelector('button:not(.rerun__pick button)');
     copy.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(command);
+        await navigator.clipboard.writeText(line.textContent);
         copy.textContent = 'Copied';
       } catch {
         // A report opened from a file:// URL has no clipboard permission, so
@@ -1378,8 +1402,16 @@ export const SCRIPT = `
      * a finding: from the overview the question is "look at all of this
      * again", and a per-case line is the wrong answer to it.
      */
-    if (result.command) {
-      document.getElementById('run-command').append(rerun(result.command, 'Run it all again'));
+    if (result.commands) {
+      const a = result.config.labelA || 'A';
+      const b = result.config.labelB || 'B';
+      document.getElementById('run-command').append(
+        rerun(result.commands.all, 'Capture again', [
+          { label: 'both sides', command: result.commands.all },
+          { label: a, command: result.commands.a, title: 'Capture ' + a + ' again, and take ' + b + ' from this run' },
+          { label: b, command: result.commands.b, title: 'Capture ' + b + ' again, and take ' + a + ' from this run' },
+        ])
+      );
     }
 
     buildSettings();

@@ -14,6 +14,8 @@
 
 import { createHash } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
+import { formatOf, toPixels } from './images.js';
+import type { Pixels } from './images.js';
 import { join } from 'node:path';
 import { resolveUrl } from './config.js';
 import type { Comparison, Config, LogEntry, RunResult, Scenario, Side, Viewport } from './types.js';
@@ -28,7 +30,17 @@ export interface ReuseSource {
 }
 
 export type ReuseOutcome =
-  | { reused: true; png: Buffer; html: string | null; url: string; logs: LogEntry[] }
+  | {
+      reused: true;
+      /** The stored file, byte for byte, in whatever format it was written as. */
+      png: Buffer;
+      /** Its pixels, when the format is one pngjs cannot read. */
+      pixels: Pixels | null;
+      format: 'png' | 'webp';
+      html: string | null;
+      url: string;
+      logs: LogEntry[];
+    }
   | { reused: false; reason: ReuseMiss };
 
 /** Why a side had to be captured after all. Shown in the run output. */
@@ -182,12 +194,16 @@ export class ReuseStore {
 
     try {
       const png = await readFile(join(this.source.dir, pngPath));
+      const format = formatOf(pngPath);
+      // Null for a PNG, which the diff reads itself; pixels for a WebP, which
+      // it cannot. Either way the side is compared against, never just shown.
+      const pixels = await toPixels(png, format);
       // The saved document keeps every attribute, so the ignore rules of this
       // run — which may differ from that one's — still apply cleanly.
       const html = needs.html && htmlPath ? await readFile(join(this.source.dir, htmlPath), 'utf8') : null;
       const url = side === 'a' ? previous.urlA : previous.urlB;
       const logs = previous.logs ? previous.logs[side] : [];
-      return { reused: true, png, html, url, logs };
+      return { reused: true, png, pixels, format, html, url, logs };
     } catch {
       return { reused: false, reason: 'missing' };
     }

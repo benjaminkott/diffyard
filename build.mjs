@@ -7,8 +7,9 @@ import { build } from 'esbuild';
  *
  * Playwright stays external: it ships native code and downloads its own browser
  * binaries, so inlining it would produce a file that still could not run on its
- * own. Everything else — the YAML parser, the PNG codec, the diff — is bundled,
- * which leaves a single script that only needs Node and an installed Playwright.
+ * own. sharp is external for the same reason: it ships prebuilt binaries per
+ * platform, which npm places on install. Everything else — the YAML parser,
+ * the PNG codec, the diff — is bundled.
  */
 const targets = [
   { entry: 'src/cli.ts', outfile: 'bin/diffyard.mjs' },
@@ -27,7 +28,7 @@ for (const target of targets) {
     format: 'esm',
     sourcemap: false,
     legalComments: 'none',
-    external: ['playwright', 'playwright-core'],
+    external: ['playwright', 'playwright-core', 'sharp'],
     banner: {
       // createRequire keeps bundled CommonJS dependencies working inside ESM.
       js: `#!/usr/bin/env node

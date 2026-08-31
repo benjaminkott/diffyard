@@ -128,11 +128,20 @@ never ends up in a commit:
       run.js               what the report's overview draws
       home--desktop.js     what one comparison's detail view draws, when opened
     shots/
-      home--desktop.a.png    home--desktop.b.png    home--desktop.diff.png
+      home--desktop.a.webp   home--desktop.b.webp   home--desktop.diff.png
       (no .diff.png where nothing differed — see The report, below)
       home--desktop.a.html   home--desktop.b.html   home--desktop.patch
   2026-08-27_15-01-44-b17e02/
 ```
+
+The screenshots are lossless WebP, which is about two fifths of the same
+picture as PNG — Chromium already writes PNG near its floor, so this is the
+only place left where the pictures get smaller. Lossless is not a preference:
+`--reuse` reads a stored side back and compares against it, so a picture that
+came back a shade different would be reported as a change in the page. Set
+`output.images: png` where something else has to read them. The difference
+picture stays a PNG either way: a palette already holds it in fewer bytes than
+WebP would, and it is one file anyone can open.
 
 `index.html` is a shell: the run itself lives in `data/`, which is why the
 report opens on a run of nine hundred pages instead of parsing a hundred and

@@ -66,9 +66,25 @@ function encode(image: PNG): Buffer {
   return indexedPng(image) ?? PNG.sync.write(image, DIFF_PNG);
 }
 
-export function diffImages(bufferA: Buffer, bufferB: Buffer, options: DiffOptions): DiffOutput {
-  const a = PNG.sync.read(bufferA);
-  const b = PNG.sync.read(bufferB);
+/**
+ * Either the encoded picture or the pixels already out of it.
+ *
+ * A side taken from an earlier run may have been stored as WebP, and pngjs
+ * cannot read that. Decoding it back to a PNG only to decode that again would
+ * be two encodes to avoid one branch.
+ */
+export type Source = Buffer | { data: Buffer; width: number; height: number };
+
+function read(source: Source): PNG {
+  if (Buffer.isBuffer(source)) return PNG.sync.read(source);
+  const image = new PNG({ width: source.width, height: source.height });
+  source.data.copy(image.data);
+  return image;
+}
+
+export function diffImages(bufferA: Source, bufferB: Source, options: DiffOptions): DiffOutput {
+  const a = read(bufferA);
+  const b = read(bufferB);
 
   const sizes = {
     sizeMismatch: a.width !== b.width || a.height !== b.height,

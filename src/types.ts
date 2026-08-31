@@ -193,6 +193,8 @@ export interface Config {
   runFolder: boolean;
   /** Fixed name for that sub-folder; a timestamp is used when null. */
   runId: string | null;
+  /** What the screenshots are stored as. See ImageFormat. */
+  images: ImageFormat;
   viewports: Viewport[];
   scenarios: Scenario[];
   /** Pixel colour distance tolerance handed to pixelmatch (0..1). */
@@ -355,6 +357,16 @@ export interface LogSummary {
   /** Of the one-sided lines, how many mean something is broken. */
   seriousOnOneSide: number;
 }
+
+/**
+ * What screenshots are written as.
+ *
+ * `webp` is the default and is lossless -- the pixels are the measurement, and
+ * a reused side is compared against them -- at about two fifths of PNG. `png`
+ * is for a run whose output something else reads, which not everything can be
+ * talked out of wanting.
+ */
+export type ImageFormat = 'png' | 'webp';
 
 /** How the serialised DOM of both sides is normalised before diffing. */
 export interface MarkupOptions {

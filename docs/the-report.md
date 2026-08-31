@@ -111,8 +111,8 @@ timing-dependent: the kind nothing else in the report will explain.
 Beside its screenshots, each comparison is written on its own:
 
 ```
-shots/shop--checkout--desktop.a.png
-shots/shop--checkout--desktop.b.png
+shots/shop--checkout--desktop.a.webp
+shots/shop--checkout--desktop.b.webp
 shots/shop--checkout--desktop.diff.png
 shots/shop--checkout--desktop.a.html
 shots/shop--checkout--desktop.b.html

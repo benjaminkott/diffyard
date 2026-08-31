@@ -3,6 +3,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Capturer } from './capture.js';
 import { classifyRun } from './classify.js';
+import { forStorage, storageFormat } from './images.js';
+import type { Pixels } from './images.js';
 import { caseFile, withoutDetail } from './report/pool.js';
 import { slug } from './config.js';
 import { diffImages } from './diff.js';
@@ -486,7 +488,10 @@ async function compare(
    */
   const obtain = async (side: Side) => {
     const request = { scenario: job.scenario, viewport: job.viewport, side };
-    if (!store || !config.reuse.sides.includes(side)) return capturer.capture(request);
+    if (!store || !config.reuse.sides.includes(side)) {
+      const shot = await capturer.capture(request);
+      return { ...shot, pixels: null, stored: 'png' as const };
+    }
 
     const outcome = await store.take(job.id, side, capture[side].fingerprint, {
       html: config.markup.enabled,
@@ -496,12 +501,20 @@ async function compare(
     if (outcome.reused) {
       capture[side].reusedFrom = { runId: store.source.runId, capturedAt: store.source.capturedAt };
       capture[side].recapturedBecause = null;
-      return { url: outcome.url, png: outcome.png, html: outcome.html, logs: outcome.logs };
+      return {
+        url: outcome.url,
+        png: outcome.png,
+        pixels: outcome.pixels,
+        stored: outcome.format,
+        html: outcome.html,
+        logs: outcome.logs,
+      };
     }
 
     capture[side].reusedFrom = null;
     capture[side].recapturedBecause = MISS_REASON[outcome.reason];
-    return capturer.capture(request);
+    const shot = await capturer.capture(request);
+    return { ...shot, pixels: null, stored: 'png' as const };
   };
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -515,7 +528,8 @@ async function compare(
         : await Promise.all([obtain('a'), obtain('b')]);
 
       report('compare');
-      const { result, png } = diffImages(shotA.png, shotB.png, {
+      // Pixels when the side came back as WebP, the encoded picture otherwise.
+      const { result, png } = diffImages(shotA.pixels ?? shotA.png, shotB.pixels ?? shotB.png, {
         pixelThreshold: config.pixelThreshold,
         ignoreAntialiasing: config.ignoreAntialiasing,
         alignRows: config.alignRows,
@@ -528,9 +542,20 @@ async function compare(
       // picture would have shown.
       const differs = result.diffPixels > 0;
 
+      // The screenshots go out in whatever this machine can write; the
+      // difference picture stays a PNG, because a palette already holds it in
+      // fewer bytes than WebP would and it is one file anyone can open.
+      const format = storageFormat(config.images);
+      // A side already in the target format is written through untouched:
+      // re-encoding a reused picture would spend the time to produce the file
+      // it came from.
+      const store_ = (shot: { png: Buffer; pixels: Pixels | null; stored: 'png' | 'webp' }) =>
+        shot.stored === format ? Promise.resolve(shot.png) : forStorage(shot.pixels ?? shot.png, format);
+      const [storedA, storedB] = await Promise.all([store_(shotA), store_(shotB)]);
+
       const files: Comparison['files'] = {
-        a: `shots/${job.id}.a.png`,
-        b: `shots/${job.id}.b.png`,
+        a: `shots/${job.id}.a.${format}`,
+        b: `shots/${job.id}.b.${format}`,
         diff: differs ? `shots/${job.id}.diff.png` : null,
         htmlA: null,
         htmlB: null,
@@ -540,8 +565,8 @@ async function compare(
       };
 
       const writes: Promise<unknown>[] = [
-        writeFile(join(shotsDir, `${job.id}.a.png`), shotA.png),
-        writeFile(join(shotsDir, `${job.id}.b.png`), shotB.png),
+        writeFile(join(shotsDir, `${job.id}.a.${format}`), storedA),
+        writeFile(join(shotsDir, `${job.id}.b.${format}`), storedB),
       ];
       if (differs) writes.push(writeFile(join(shotsDir, `${job.id}.diff.png`), png));
 

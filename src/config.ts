@@ -143,6 +143,7 @@ function normalise(raw: Record<string, unknown>, configDir: string, file: string
     outDir: resolveOutput(str(output['dir'], DEFAULT_OUT_DIR, 'output.dir')),
     runFolder: bool(output['runFolder'], true, 'output.runFolder'),
     runId: optionalStr(output['runId'], 'output.runId'),
+    images: enumValue(output['images'], ['png', 'webp'] as const, 'webp', 'output.images'),
     viewports,
     scenarios,
     beforeEach: parseBeforeEach(raw['beforeEach']),

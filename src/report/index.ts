@@ -164,7 +164,11 @@ async function inlineImages(result: RunResult, outDir: string): Promise<Record<s
       const file = comparison.files[side];
       if (!file) continue;
       const bytes = await readFile(join(outDir, file));
-      sources[`${comparison.id}:${side}`] = `data:image/png;base64,${bytes.toString('base64')}`;
+      // The type comes off the name: the screenshots may be WebP, the
+      // difference picture is always a PNG, and a data URI that lies about
+      // which is a picture that does not appear.
+      const type = file.endsWith('.webp') ? 'image/webp' : 'image/png';
+      sources[`${comparison.id}:${side}`] = `data:${type};base64,${bytes.toString('base64')}`;
     }
   }
   return sources;

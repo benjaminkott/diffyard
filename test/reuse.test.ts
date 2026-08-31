@@ -112,6 +112,24 @@ describe('reusing a side', { concurrency: false }, () => {
     assert.ok(png.length > 0);
   });
 
+  it('reuses a side that was stored as WebP', async () => {
+    // Screenshots are stored in a format pngjs cannot read, and this is the
+    // path where that matters: a reused side is not shown, it is compared
+    // against. Anything lossy here would be reported as a change in the page.
+    const out = join(workDir, 'out-webp');
+    const first = await runAndRecord(BASE, out);
+
+    const stored = first.comparisons[0]?.files.a;
+    assert.ok(stored?.endsWith('.webp'), `stored as webp, was ${stored}`);
+
+    const second = await runAndRecord(`${BASE}reuse:\n  side: a\n`, out);
+    const reused = second.comparisons[0];
+
+    assert.ok(reused?.capture?.a.reusedFrom, 'side A came from the earlier run');
+    assert.equal(reused.diff?.diffPixels, first.comparisons[0]?.diff?.diffPixels,
+      'and comparing against it gives the same answer as capturing it did');
+  });
+
   it('captures again when a setting no longer matches, and says so', async () => {
     const out = join(workDir, 'out-changed');
     await runAndRecord(BASE, out);

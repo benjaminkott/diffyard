@@ -143,6 +143,14 @@ export const CONFIG_SCHEMA = {
         },
         runId: { type: 'string', description: 'Fixed folder name instead of the generated one.' },
         title: { type: 'string', default: 'diffyard report' },
+        images: {
+          type: 'string',
+          enum: ['png', 'webp'],
+          default: 'webp',
+          description:
+            'What screenshots are stored as. Both are lossless; webp is about two fifths ' +
+            'the size, png is for when something else has to read them.',
+        },
       },
       additionalProperties: false,
     },

@@ -202,6 +202,15 @@
         "title": {
           "type": "string",
           "default": "diffyard report"
+        },
+        "images": {
+          "type": "string",
+          "enum": [
+            "png",
+            "webp"
+          ],
+          "default": "webp",
+          "description": "What screenshots are stored as. Both are lossless; webp is about two fifths the size, png is for when something else has to read them."
         }
       },
       "additionalProperties": false

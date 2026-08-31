@@ -150,7 +150,7 @@ Reading the results
     results.json                 every comparison with its ratio, threshold,
                                  status, markup counts and file paths
     data/                        the run in the shape the report loads it
-    shots/<scenario>--<viewport>.a.png    .b.png    .diff.png
+    shots/<scenario>--<viewport>.a.webp   .b.webp   .diff.png
     shots/<scenario>--<viewport>.a.html   .b.html   .patch
 
   Read results.json for the numbers, the .patch for what changed in the DOM —

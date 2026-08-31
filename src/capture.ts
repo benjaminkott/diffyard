@@ -442,14 +442,22 @@ async function scrollThroughPage(page: Page, timeout: number): Promise<void> {
     .evaluate(async (limit) => {
       const deadline = Date.now() + limit;
 
-      // An image that has a source but no intrinsic width has not arrived,
-      // whatever `complete` says about it.
+      // Still on the way, which `complete` answers exactly: it is false while
+      // the browser is fetching, and true once it has finished either way.
+      //
+      // It used to also count an image with no intrinsic width, on the idea
+      // that a picture without a size had not arrived. But that is what a 404
+      // looks like -- complete, and nothing to show -- so one broken image
+      // held the capture until the budget above ran out. Measured on a real
+      // page with three missing files: the whole budget spent, for a
+      // screenshot identical to the one taken three milliseconds in. It is
+      // spent on both sides and at every viewport, so one broken image cost
+      // the scenario four times over.
+      //
+      // currentSrc, because a lazy image the browser has not been asked for
+      // yet is not complete either, and never will be.
       const outstanding = () =>
-        Array.from(document.images).filter(
-          (image) =>
-            (image.getAttribute('src') ?? image.getAttribute('srcset')) &&
-            (!image.complete || image.naturalWidth === 0)
-        ).length;
+        Array.from(document.images).filter((image) => image.currentSrc && !image.complete).length;
 
       while (outstanding() > 0 && Date.now() < deadline) {
         await new Promise((done) => setTimeout(done, 100));

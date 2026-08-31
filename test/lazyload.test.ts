@@ -21,6 +21,17 @@ const IMAGE = solidPng(8, 8, [200, 30, 30]);
 /** Far enough down that nothing loads it without being scrolled to. */
 const FAR_DOWN = 6000;
 
+/** A page whose picture is not there: the server answers, with the wrong thing. */
+function withBrokenImage(): string {
+  return page({
+    title: 'Broken',
+    body:
+      `<div style="height:${FAR_DOWN}px"></div>` +
+      '<img loading="lazy" src="/gone.png" width="300" height="300" alt="">' +
+      '<img loading="lazy" src="/dot.png" width="300" height="300" alt="">',
+  });
+}
+
 function withImage(loading: 'lazy' | 'eager', smooth: boolean): string {
   return page({
     title: 'Lazy',
@@ -44,11 +55,11 @@ before(async () => {
   // difference the run reports is the capture failing to reach it.
   lazySite = await serve({
     assets,
-    pages: { index: withImage('lazy', false), smooth: withImage('lazy', true) },
+    pages: { index: withImage('lazy', false), smooth: withImage('lazy', true), broken: withBrokenImage() },
   });
   eagerSite = await serve({
     assets,
-    pages: { index: withImage('eager', false), smooth: withImage('eager', false) },
+    pages: { index: withImage('eager', false), smooth: withImage('eager', false), broken: withBrokenImage() },
   });
 });
 
@@ -57,6 +68,13 @@ after(async () => {
   await eagerSite?.close();
   rmSync(workDir, { recursive: true, force: true });
 });
+
+/** How long the run took, beside what it found. */
+async function timed(path: string, extra = ''): Promise<{ ratio: number; ms: number }> {
+  const started = Date.now();
+  const ratio = await compare(path, extra);
+  return { ratio, ms: Date.now() - started };
+}
 
 async function compare(path: string, extra = ''): Promise<number> {
   const dir = join(workDir, `run-${counter++}`);
@@ -100,6 +118,18 @@ describe('a page that only loads its images when scrolled to', () => {
     // the next screen every twenty-five milliseconds keeps restarting the
     // animation and never leaves the top of the page.
     assert.equal(await compare('/smooth'), 0);
+  });
+
+  it('does not wait out its budget for a picture that is not coming', async () => {
+    // A missing image is complete and has no width -- which is also what an
+    // image still on the wire looks like if you go by width alone. Counting it
+    // as outstanding held every capture until the settle budget ran out: eight
+    // seconds, on both sides, at every viewport, for a screenshot identical to
+    // the one taken at once.
+    const { ms } = await timed('/broken');
+
+    // The budget is 8s a side. Anything near it means the wait is back.
+    assert.ok(ms < 8000, `a page with a broken image took ${(ms / 1000).toFixed(1)}s`);
   });
 
   it('leaves the page alone when the walk is switched off', async () => {

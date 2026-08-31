@@ -61,6 +61,7 @@ export function shell(result: RunResult, config: Config, data: string): string {
     <button type="button" data-filter="fail">Differences (${result.failed})</button>
     <button type="button" data-filter="error">Errors (${result.errored})</button>
     <button type="button" data-filter="markup">Markup changed (${markupChanged(result)})</button>
+    ${answersDiffer(result) > 0 ? '<button type="button" data-filter="answer" class="is-warning">Answered differently (' + answersDiffer(result) + ')</button>' : ''}
     ${consoleDiffers(result) > 0 ? '<button type="button" data-filter="console">Console differs (' + consoleDiffers(result) + ')</button>' : ''}
   </div>
   ${kindFilters(result)}
@@ -280,7 +281,10 @@ function formatMeta(result: RunResult): string {
  */
 function kindFilters(result: RunResult): string {
   const counts = tally(result.comparisons);
-  const present = (Object.keys(KIND_LABELS) as DiffKind[]).filter((kind) => counts[kind] > 0);
+  // 'answer' is left out: it has a chip of its own in the row above.
+  const present = (Object.keys(KIND_LABELS) as DiffKind[]).filter(
+    (kind) => kind !== 'answer' && counts[kind] > 0
+  );
   if (present.length === 0) return '';
 
   const options = present
@@ -342,6 +346,19 @@ function groupToggle(result: RunResult): string {
     '<span>Group by site</span>' +
     '</label>'
   );
+}
+
+/**
+ * How many comparisons the two sides did not answer the same way.
+ *
+ * Its own chip rather than an entry in the kind list, because it is not a kind
+ * of difference: it says the comparison is not one. Everything else in that
+ * list answers "what changed on this page", and this one answers "this is not
+ * the page you asked for" -- a reader looking for that should not have to know
+ * it is filed under kinds.
+ */
+function answersDiffer(result: RunResult): number {
+  return result.comparisons.filter((comparison) => (comparison.kinds ?? []).includes('answer')).length;
 }
 
 /** How many comparisons had one side say something the other did not. */

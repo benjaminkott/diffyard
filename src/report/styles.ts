@@ -221,6 +221,10 @@ code { font-family: var(--mono); font-size: var(--t-sm); }
 .detail__bar .modes button.is-active {
   background: var(--accent); color: var(--on-accent); font-weight: 600; border: 0;
 }
+/* A filter that is only there when something is wrong, coloured like the thing
+   it finds, so it reads as a warning in the row rather than as one more list. */
+.filters button.is-warning:not(.is-active) { color: var(--fail); }
+.filters button.is-warning.is-active { background: var(--fail); color: #fff; }
 
 .sort { display: inline-flex; align-items: center; gap: var(--s-2); color: var(--muted); font-size: var(--t-sm); }
 .check {
@@ -338,6 +342,9 @@ select:hover, input[type=search]:hover { border-color: var(--border-strong); }
 .tile__row--heavy .tile__fill { background: var(--level-5); }
 .tile__row--state { grid-column: 2 / -1; text-align: left; color: var(--error); font-size: var(--t-xs); }
 .tile__row--skipped .tile__row--state { color: var(--subtle); }
+/* Not the same red as a capture that failed: nothing went wrong here, the two
+   sides answered two different questions, and the row says which. */
+.tile__row--answer .tile__row--state { color: var(--fail); font-weight: 600; }
 
 /* ----------------------------------------------------------------- detail */
 .detail__bar {
@@ -409,6 +416,11 @@ main { padding-block: var(--s-5) var(--s-7); display: grid; gap: var(--s-4); }
   border: 1px solid var(--border); color: var(--muted);
 }
 .pill--changed { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.pill--answer {
+  color: var(--fail); font-weight: 600;
+  border-color: color-mix(in srgb, var(--fail) 55%, var(--border));
+  background: color-mix(in srgb, var(--fail) 12%, transparent);
+}
 
 /* When this one was taken. On the card rather than in the run's header,
    because that is what it describes, and beside the verdict rather than in the
@@ -632,6 +644,11 @@ figcaption a:hover { text-decoration: underline; }
   white-space: nowrap;
 }
 .tag--image { border-color: var(--level-3); color: var(--error); }
+.tag--answer {
+  border-color: color-mix(in srgb, var(--fail) 55%, var(--border));
+  background: color-mix(in srgb, var(--fail) 12%, transparent);
+  color: var(--fail);
+}
 
 /* The line to paste into a terminal to run this one comparison again. */
 .rerun {

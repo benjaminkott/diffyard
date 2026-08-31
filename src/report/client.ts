@@ -106,6 +106,7 @@ export const SCRIPT = `
         if (state.filter === 'error' && comparison.status !== 'error') return false;
         if (state.filter === 'markup' && (!comparison.markup || comparison.markup.identical)) return false;
         if (state.filter === 'console' && !(comparison.logs && comparison.logs.differs)) return false;
+        if (state.filter === 'answer' && !(comparison.kinds || []).includes('answer')) return false;
         if (state.kind !== 'any' && !(comparison.kinds || []).includes(state.kind)) return false;
         if (!query) return true;
         return (
@@ -164,6 +165,18 @@ export const SCRIPT = `
       const pill = document.createElement('span');
       pill.className = 'pill pill--changed';
       pill.textContent = 'markup +' + comparison.markup.added + ' / -' + comparison.markup.removed;
+      badge.after(pill);
+    }
+
+    // Beside the verdict, because it is the reason for it. The note further
+    // down says it in full, but a reader working through a long list reads the
+    // head of each card and the pictures, and a paragraph between the two is
+    // the one thing there that looks like prose and gets skipped.
+    const notAsked = mismatch(comparison);
+    if (notAsked) {
+      const pill = document.createElement('span');
+      pill.className = 'pill pill--answer';
+      pill.textContent = notAsked;
       badge.after(pill);
     }
 
@@ -680,6 +693,28 @@ export const SCRIPT = `
     return box;
   }
 
+  /**
+   * The same thing in the words a tile row has room for.
+   *
+   * Only where the two sides disagree: a redirect both of them made is the two
+   * agreeing about where the page is, and saying so on the overview would mark
+   * a whole run that is working as expected.
+   */
+  function mismatch(comparison) {
+    const said = comparison.answers;
+    if (!said) return null;
+
+    if (said.a.status !== said.b.status) {
+      return (said.a.status || 'nothing') + ' vs ' + (said.b.status || 'nothing');
+    }
+
+    if (said.a.redirected !== said.b.redirected) {
+      return 'redirected on ' + (said.a.redirected ? 'A' : 'B') + ' only';
+    }
+
+    return null;
+  }
+
   function markupView(comparison) {
     const container = document.createElement('div');
     const markup = comparison.markup;
@@ -1115,6 +1150,19 @@ export const SCRIPT = `
           ? 'timed out'
           : comparison.status;
       if (comparison && comparison.status === 'skipped') row.classList.add('tile__row--skipped');
+      return row;
+    }
+
+    // A comparison whose sides answered differently has a percentage, and it
+    // means nothing -- it is how much one page looks like another page. So the
+    // row says what happened rather than measuring it, which is also what puts
+    // the finding on the overview instead of one card down.
+    const said = mismatch(comparison);
+    if (said) {
+      percent.remove();
+      bar.remove();
+      state.textContent = said;
+      row.classList.add('tile__row--answer');
       return row;
     }
 

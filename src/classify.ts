@@ -73,8 +73,28 @@ export function classify(input: Classifiable): DiffKind[] {
   return ORDER.filter((kind) => kinds.has(kind));
 }
 
-/** Most specific first, so the tag shown when space is short is the useful one. */
-const ORDER: DiffKind[] = ['image', 'text', 'markup', 'moved', 'size', 'rendering'];
+/**
+ * Most specific first, so the tag shown when space is short is the useful one.
+ *
+ * `answer` is first and is never produced by classify() -- it is set for the
+ * whole comparison below, in place of everything else. It belongs in this list
+ * anyway, because this is also what the run is tallied against, and a kind
+ * missing from it was counted as NaN and so never offered as a filter.
+ */
+const ORDER: DiffKind[] = ['answer', 'image', 'text', 'markup', 'moved', 'size', 'rendering'];
+
+/**
+ * Whether the two sides answered the same question.
+ *
+ * Either half of it is enough: a status only one side gave, or a redirect only
+ * one side made. In both cases the two pictures are of two different pages, so
+ * the percentage between them is arithmetic rather than a measurement, and
+ * whatever the pixels say is not about the page that was asked for.
+ */
+export function answersDiffer(answers: Comparison['answers']): boolean {
+  if (!answers) return false;
+  return answers.a.status !== answers.b.status || answers.a.redirected !== answers.b.redirected;
+}
 
 export const KIND_LABELS: Record<DiffKind, string> = {
   answer: 'Answered differently',
@@ -152,7 +172,7 @@ export function classifyRun(comparisons: Comparison[]): string[] {
     // Before anything read off the pixels: two sides that answered differently
     // were not asked the same question, and what the pictures differ by is not
     // the answer to it.
-    if (comparison.answers && comparison.answers.a.status !== comparison.answers.b.status) {
+    if (answersDiffer(comparison.answers)) {
       comparison.kinds = ['answer'];
       continue;
     }

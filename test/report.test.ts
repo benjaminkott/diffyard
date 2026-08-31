@@ -302,7 +302,10 @@ function inScript(text: string): string {
 }
 
 /** Renders the report once and opens it, so each test starts from a page. */
-async function open(scheme: 'light' | 'dark'): Promise<{ page: Page; errors: string[] }> {
+async function open(
+  scheme: 'light' | 'dark',
+  result: RunResult = RESULT
+): Promise<{ page: Page; errors: string[] }> {
   const configFile = join(workDir, 'diffyard.yaml');
   writeFileSync(
     configFile,
@@ -310,7 +313,7 @@ async function open(scheme: 'light' | 'dark'): Promise<{ page: Page; errors: str
   );
 
   const file = join(workDir, `report-${scheme}.html`);
-  const report = await renderReport({ ...RESULT, outDir: workDir }, loadConfig(configFile), { selfContained: false });
+  const report = await renderReport({ ...result, outDir: workDir }, loadConfig(configFile), { selfContained: false });
   writeFileSync(file, report.html);
 
   // The report is a shell; without what goes beside it there is nothing on the
@@ -882,6 +885,63 @@ describe('report layout', () => {
 
     // The fixture puts all of its change in one band, so exactly one shows.
     assert.equal(await page.locator('.map__band').count(), 1);
+    await page.close();
+  });
+});
+
+/**
+ * A comparison whose two sides did not answer the same question.
+ *
+ * The finding is not what the pictures differ by — it is that they are
+ * pictures of two different pages, so the percentage beside them means
+ * nothing. That has to be readable from the overview, where a reader decides
+ * what to open, rather than one card down where it reads as prose.
+ */
+describe('two sides that answered differently', () => {
+  const answered: RunResult = {
+    ...RESULT,
+    comparisons: RESULT.comparisons.map((entry) =>
+      entry.id === 'top--desktop'
+        ? {
+            ...entry,
+            kinds: ['answer'] as Comparison['kinds'],
+            answers: {
+              a: { status: 200, landed: 'https://a.test/top', path: '/top', redirected: false },
+              b: { status: 404, landed: 'https://b.test/top', path: '/top', redirected: false },
+            },
+          }
+        : entry
+    ),
+  };
+
+  it('says so on the tile, in place of a percentage that measures nothing', async () => {
+    const { page, errors } = await open('light', answered);
+    assert.deepEqual(errors, []);
+
+    // By name, not by text: every tile says "desktop", which contains "top".
+    const tile = page.locator('#tiles > .tile').filter({
+      has: page.locator('.tile__name', { hasText: /^top$/ }),
+    });
+    assert.match((await tile.textContent()) ?? '', /200 vs 404/, 'what each side said');
+    assert.equal(await tile.locator('.tile__pct').count(), 0, 'and no percentage beside it');
+    await page.close();
+  });
+
+  it('offers them as a filter of their own', async () => {
+    const { page } = await open('light', answered);
+
+    const chip = page.locator('.filters button[data-filter="answer"]');
+    assert.equal(await chip.textContent(), 'Answered differently (1)');
+
+    await chip.click();
+    await page.waitForTimeout(150);
+    assert.equal(await page.locator('#tiles > .tile').count(), 1, 'only the one that differs');
+    await page.close();
+  });
+
+  it('leaves the row out where every side answered the same way', async () => {
+    const { page } = await open('light');
+    assert.equal(await page.locator('.filters button[data-filter="answer"]').count(), 0);
     await page.close();
   });
 });

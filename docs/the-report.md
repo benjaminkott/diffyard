@@ -82,6 +82,14 @@ Each comparison is classified, and the overview filters by it:
 | Height differs | The two pages are not the same length |
 | Rendering only | The pixels differ while the markup is identical |
 
+One of them is not a kind of difference but a warning that the comparison is
+not one: *Answered differently*, where the two sides gave different status
+codes, or where one of them was redirected and the other was not. Its filter
+sits with the run's own filters rather than in the list above, the tile says
+what each side answered in place of a percentage that measures nothing, and the
+comparison is classified as nothing else — what two different pages differ by
+is not a finding about either of them.
+
 A comparison usually carries several: a rewritten heading that made the page
 taller is text, structure and height at once. In `results.json` they are
 `kinds` on each comparison.

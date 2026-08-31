@@ -61,7 +61,10 @@ carries a current bundle.
 | `src/reuse.ts` | Taking one side of a comparison from an earlier run |
 | `src/markup.ts` | HTML normaliser and line diff |
 | `src/runner.ts` | Runs the pairs, owns run folders and timeouts |
-| `src/report.ts` | The self-contained HTML report |
+| `src/report/index.ts` | Renders the report; decides what travels with it |
+| `src/report/shell.ts` | The document: chrome, controls, templates |
+| `src/report/styles.ts` | The report's stylesheet |
+| `src/report/client.ts` | What the report does once it is open |
 | `src/cli.ts` | `run`, `explore`, `init`, `schema` |
 | `src/explore.ts` | Inspects a page and drafts a config from what it finds |
 | `src/mcp.ts` | MCP server: hands out the CLI path and how to use it |

@@ -8,7 +8,7 @@ import { ConfigError, loadConfig, parseSides, slug } from './config.js';
 import { explorePage, renderExploration } from './explore.js';
 import { EXAMPLE_CONFIG } from './example.js';
 import { Progress } from './progress.js';
-import { renderReport } from './report.js';
+import { renderReport } from './report/index.js';
 import { SCHEMA_FILENAME, schemaJson } from './schema.js';
 import { run } from './runner.js';
 import { ReuseError } from './reuse.js';

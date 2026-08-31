@@ -6,7 +6,7 @@ import { after, before, describe, it } from 'node:test';
 import { chromium } from 'playwright';
 import type { Browser, Page } from 'playwright';
 import { loadConfig } from '../dist/config.js';
-import { renderReport } from '../dist/report.js';
+import { renderReport } from '../dist/report/index.js';
 import type { Comparison, RunResult } from '../dist/types.js';
 import { solidPng } from './helpers/server.ts';
 

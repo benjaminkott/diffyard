@@ -5,8 +5,8 @@
 export { loadConfig, resolveUrl, ConfigError } from './config.js';
 export { run } from './runner.js';
 export type { RunEvents, Phase } from './runner.js';
-export { renderReport } from './report.js';
-export type { ReportOptions } from './report.js';
+export { renderReport } from './report/index.js';
+export type { ReportOptions } from './report/index.js';
 export { Progress } from './progress.js';
 export type { ProgressState, ProgressOptions } from './progress.js';
 export { zipDirectory, formatBytes } from './artifact.js';

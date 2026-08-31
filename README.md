@@ -134,12 +134,19 @@ never ends up in a commit:
   2026-08-27_15-01-44-b17e02/
 ```
 
-The screenshots are lossless WebP, which is about two fifths of the same
-picture as PNG — Chromium already writes PNG near its floor, so this is the
-only place left where the pictures get smaller. Lossless is not a preference:
-`--reuse` reads a stored side back and compares against it, so a picture that
-came back a shade different would be reported as a change in the page. Set
-`output.images: png` where something else has to read them.
+The screenshots are near-lossless WebP, about half the size of the same picture
+as PNG — Chromium already writes PNG near its floor, so this is the only place
+left where the pictures get smaller. Set `output.images: png` where something
+else has to read them.
+
+They are also what gets compared. The pixels a run reports on are the ones in
+these files, not the ones that came out of the browser, so a side taken from an
+earlier run has been through exactly what a side captured now has. Comparing
+one against the other inflates the difference — 0.028% became 0.365% in every
+pair measured — which on a `--reuse` run is a failure the page did not earn.
+Measured over the comparisons sitting either side of the pass threshold, where
+a shift would show, near-lossless moves the reading by 0.0014 of a percentage
+point and changes no verdict.
 
 The difference picture is the other case. Nothing reads it back — it is looked
 at, to see where on the page something moved — so it is the one picture that

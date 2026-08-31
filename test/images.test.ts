@@ -37,16 +37,31 @@ describe('how screenshots are stored', () => {
     assert.equal(await forStorage(original, 'png'), original, 'the same buffer, not a copy of it');
   });
 
-  it('gives back the pixels it was given, to the channel', async () => {
+  it('gives back the same pixels for the same picture, twice', async () => {
+    // The screenshots are stored near-lossless, so this is not "byte for byte
+    // what went in" -- it is the property the comparison rests on: the same
+    // page stored twice comes back the same, so a page that did not change
+    // still measures zero.
+    const once = await toPixels(await forStorage(shot(), 'webp'), 'webp');
+    const twice = await toPixels(await forStorage(shot(), 'webp'), 'webp');
+
+    assert.ok(once && twice);
+    assert.deepEqual(once.data, twice.data);
+    assert.equal(once.width, PNG.sync.read(shot()).width);
+  });
+
+  it('stays close to what it was given', async () => {
+    // Near-lossless, so not exact -- but a screenshot that came back visibly
+    // different would be reported as a change in the page.
     const original = PNG.sync.read(shot());
     const back = await toPixels(await forStorage(shot(), 'webp'), 'webp');
 
     assert.ok(back);
-    assert.equal(back.width, original.width);
-    assert.equal(back.height, original.height);
+    let worst = 0;
     for (let at = 0; at < original.data.length; at += 1) {
-      assert.equal(back.data[at], original.data[at], `channel ${at}`);
+      worst = Math.max(worst, Math.abs((back.data[at] ?? 0) - (original.data[at] ?? 0)));
     }
+    assert.ok(worst <= 8, `worst channel off by ${worst}`);
   });
 
   it('hands a PNG straight to the diff instead of decoding it twice', async () => {

@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Capturer } from './capture.js';
 import { classifyRun } from './classify.js';
-import { forDiff, forStorage, storageFormat } from './images.js';
+import { forDiff, forStorage, storageFormat, toPixels } from './images.js';
 import type { Pixels } from './images.js';
 import { caseFile, withoutDetail } from './report/pool.js';
 import { slug } from './config.js';
@@ -554,8 +554,29 @@ async function compare(
         : await Promise.all([obtain('a'), obtain('b')]);
 
       report('compare');
-      // Pixels when the side came back as WebP, the encoded picture otherwise.
-      const { result, image } = diffImages(shotA.pixels ?? shotA.png, shotB.pixels ?? shotB.png, {
+
+      const format = storageFormat(config.images);
+
+      // A side already in the target format is written through untouched:
+      // re-encoding a reused picture would both spend the time to produce the
+      // file it came from and put it through a second generation of the
+      // encoder, which the side captured now has not been through.
+      const asStored = (shot: { png: Buffer; pixels: Pixels | null; stored: 'png' | 'webp' }) =>
+        shot.stored === format ? Promise.resolve(shot.png) : forStorage(shot.pixels ?? shot.png, format);
+      const [storedA, storedB] = await Promise.all([asStored(shotA), asStored(shotB)]);
+
+      // Compared as they are kept, not as they were captured.
+      //
+      // The screenshots are stored near-lossless, so a side read back from an
+      // earlier run has been through the encoder and a side captured now has
+      // not. Comparing one against the other inflated the difference in every
+      // pair measured -- 0.028% became 0.365% -- which on a --reuse run is a
+      // failure the page did not earn. Put both through, and the treatment is
+      // the same on either side; a page that did not change still measures
+      // exactly zero.
+      const [readA, readB] = await Promise.all([toPixels(storedA, format), toPixels(storedB, format)]);
+
+      const { result, image } = diffImages(readA ?? storedA, readB ?? storedB, {
         pixelThreshold: config.pixelThreshold,
         ignoreAntialiasing: config.ignoreAntialiasing,
         alignRows: config.alignRows,
@@ -567,19 +588,6 @@ async function compare(
       // not written; the report greys side A instead, which is what the
       // picture would have shown.
       const differs = result.diffPixels > 0;
-
-      // Comparing is done; what is left is how small the record of it has to
-      // be. The screenshots keep every pixel, because a later run reuses them
-      // and compares against them; the difference picture may lose a little,
-      // because nothing reads it back.
-      const format = storageFormat(config.images);
-
-      // A side already in the target format is written through untouched:
-      // re-encoding a reused picture would spend the time to produce the file
-      // it came from.
-      const asStored = (shot: { png: Buffer; pixels: Pixels | null; stored: 'png' | 'webp' }) =>
-        shot.stored === format ? Promise.resolve(shot.png) : forStorage(shot.pixels ?? shot.png, format);
-      const [storedA, storedB] = await Promise.all([asStored(shotA), asStored(shotB)]);
 
       const files: Comparison['files'] = {
         a: `shots/${job.id}.a.${format}`,

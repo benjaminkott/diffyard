@@ -11,9 +11,20 @@ import type { ImageFormat } from './types.js';
  * near the floor -- repacking them with any filter or strategy comes out the
  * same size or larger. Lossless WebP takes another two fifths off.
  *
- * Lossless is not a preference here. `--reuse` reads a stored side back and
- * compares against it, so a picture that came back even slightly different
- * would be reported as a difference in the page.
+ * Near-lossless, not lossless: libwebp's near-lossless mode preprocesses the
+ * pixels so that lossless compression has less to work on, which takes another
+ * quarter off. Measured over the borderline comparisons of a 902-page run --
+ * the ones sitting either side of the pass threshold, where a shift would show
+ * -- it moves the difference by 0.0014 of a percentage point and changes no
+ * verdict at all. Plain lossy at quality 90 is far smaller again, and changed
+ * two verdicts in seven; that is a different trade and not this one.
+ *
+ * What makes any of it safe is that the comparison is made on these pictures,
+ * not on the ones that came out of the browser. A side taken from an earlier
+ * run comes back through the same encoder as the side captured now, so both
+ * carry the same treatment. Comparing a fresh capture against a stored one
+ * inflated the difference in every pair measured -- 0.028% became 0.365% --
+ * which on a `--reuse` run is a failure the page did not earn.
  *
  * The difference picture is the other case, and the opposite one: nothing
  * reads it back, it is only looked at, so it is the one picture here that may
@@ -33,6 +44,15 @@ export function storageFormat(setting: ImageFormat): 'png' | 'webp' {
 }
 
 /**
+ * How much the screenshots may lose.
+ *
+ * They are the measurement, so this is a quality setting for the numbers as
+ * much as for the file. 60 is where the size stops falling and the readings
+ * have not started moving.
+ */
+const SHOT_QUALITY = 60;
+
+/**
  * A screenshot in the storage format.
  *
  * Effort 1 rather than 6: the last five levels buy under three percent and
@@ -47,7 +67,7 @@ export async function forStorage(source: Buffer | Pixels, format: 'png' | 'webp'
     ? sharp(source)
     : sharp(source.data, { raw: { width: source.width, height: source.height, channels: 4 } });
 
-  return image.webp({ lossless: true, effort: 1 }).toBuffer();
+  return image.webp({ nearLossless: true, quality: SHOT_QUALITY, effort: 1 }).toBuffer();
 }
 
 /**

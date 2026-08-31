@@ -33,6 +33,78 @@ function png(
 const WHITE: [number, number, number] = [255, 255, 255];
 const BLACK: [number, number, number] = [0, 0, 0];
 
+/**
+ * How the difference picture is written.
+ *
+ * It is a page in greys with a few marks on it -- under two hundred colours --
+ * and it used to be written as truecolor, three bytes a pixel to say so. What
+ * is pinned here is that the palette costs nothing: same picture, fewer bytes,
+ * and a picture a palette cannot hold still gets written.
+ */
+describe('the difference picture', () => {
+  const pixels = (buffer: Buffer): PNG => PNG.sync.read(buffer);
+
+  it('is written with a palette', () => {
+    const { png: written } = diffImages(
+      png(40, 40, WHITE, { from: 10, to: 20, colour: BLACK }),
+      png(40, 40, WHITE, { from: 12, to: 22, colour: BLACK }),
+      OPTIONS
+    );
+
+    assert.equal(written.readUInt8(25), 3, 'colour type 3 is indexed');
+    assert.ok(written.includes(Buffer.from('PLTE', 'latin1')), 'and it carries its palette');
+  });
+
+  it('shows exactly what it showed before', () => {
+    const a = png(40, 40, WHITE, { from: 10, to: 20, colour: BLACK });
+    const b = png(40, 40, WHITE, { from: 12, to: 22, colour: BLACK });
+
+    const written = pixels(diffImages(a, b, OPTIONS).png);
+    // Rewritten as truecolor and read back: the bytes differ, the picture does not.
+    const again = pixels(PNG.sync.write(written, { colorType: 2, inputHasAlpha: true }));
+
+    assert.equal(written.width, again.width);
+    assert.equal(written.height, again.height);
+    for (let at = 0; at < written.data.length; at += 4) {
+      for (const channel of [0, 1, 2]) {
+        assert.equal(written.data[at + channel], again.data[at + channel], `pixel ${at / 4}`);
+      }
+    }
+  });
+
+  it('never needs more colours than a palette holds', () => {
+    // Why the palette is always enough, and not a gamble: pixelmatch blends
+    // the unchanged page towards white at a quarter, so its greys are 191..255
+    // and no more -- 65 of them. Each tinted row runs along one line from those
+    // same 65, and the marks are three colours. 198 at the very worst.
+    const noisy = (seed: number): Buffer => {
+      const image = new PNG({ width: 64, height: 90 });
+      let state = seed;
+      for (let at = 0; at < image.data.length; at += 4) {
+        state = (state * 1103515245 + 12345) & 0x7fffffff;
+        image.data[at] = state & 0xff;
+        image.data[at + 1] = (state >> 8) & 0xff;
+        image.data[at + 2] = (state >> 16) & 0xff;
+        image.data[at + 3] = 255;
+      }
+      return PNG.sync.write(image);
+    };
+
+    const cases: [string, Buffer, Buffer, typeof OPTIONS][] = [
+      ['noise against noise', noisy(1), noisy(2), OPTIONS],
+      ['noise against itself', noisy(3), noisy(3), OPTIONS],
+      ['pages of different heights', png(30, 40, WHITE), png(30, 70, BLACK), OPTIONS],
+      ['rows inserted', png(30, 40, WHITE, { from: 5, to: 9, colour: BLACK }),
+        png(30, 40, WHITE, { from: 20, to: 24, colour: BLACK }), { ...OPTIONS, alignRows: true }],
+      ['nothing tolerated', noisy(4), noisy(5), { ...OPTIONS, pixelThreshold: 0 }],
+    ];
+
+    for (const [what, a, b, options] of cases) {
+      assert.equal(diffImages(a, b, options).png.readUInt8(25), 3, what);
+    }
+  });
+});
+
 describe('diffImages', () => {
   it('reports no difference for identical images', () => {
     const image = png(20, 10, WHITE);

@@ -1,5 +1,6 @@
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
+import { indexedPng } from './indexed.js';
 import { align } from './align.js';
 import type { Edit, RowSignatures } from './align.js';
 import type { DiffRegion, DiffResult } from './types.js';
@@ -52,6 +53,19 @@ const REMOVED_TINT: [number, number, number] = [190, 60, 60];
  */
 const DIFF_PNG = { deflateLevel: 9, deflateStrategy: 1, colorType: 2, inputHasAlpha: true } as const;
 
+/**
+ * The difference picture, encoded.
+ *
+ * A palette holds it: the greys run from 191 to 255 because pixelmatch blends
+ * towards white at a quarter, the tinted rows run along one line each, and the
+ * marks are three colours -- under two hundred on a real page, where truecolor
+ * spends three bytes a pixel saying so. A page that somehow needs more than a
+ * palette can hold falls back to what it was written as before.
+ */
+function encode(image: PNG): Buffer {
+  return indexedPng(image) ?? PNG.sync.write(image, DIFF_PNG);
+}
+
 export function diffImages(bufferA: Buffer, bufferB: Buffer, options: DiffOptions): DiffOutput {
   const a = PNG.sync.read(bufferA);
   const b = PNG.sync.read(bufferB);
@@ -74,7 +88,7 @@ export function diffImages(bufferA: Buffer, bufferB: Buffer, options: DiffOption
         aligned: null,
         unaligned: null,
       },
-      png: PNG.sync.write(positional.image, DIFF_PNG),
+      png: encode(positional.image),
     };
   }
 
@@ -92,7 +106,7 @@ export function diffImages(bufferA: Buffer, bufferB: Buffer, options: DiffOption
         aligned: aligned.shift.shift === 0 ? null : aligned.shift,
         unaligned: null,
       },
-      png: PNG.sync.write(positional.image, DIFF_PNG),
+      png: encode(positional.image),
     };
   }
 
@@ -105,7 +119,7 @@ export function diffImages(bufferA: Buffer, bufferB: Buffer, options: DiffOption
       // much of the page moved rather than changed.
       unaligned: { ratio: positional.stats.ratio, diffPixels: positional.stats.diffPixels },
     },
-    png: PNG.sync.write(aligned.image, DIFF_PNG),
+    png: encode(aligned.image),
   };
 }
 

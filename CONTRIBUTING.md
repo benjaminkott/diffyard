@@ -60,6 +60,7 @@ carries a current bundle.
 | `src/logs.ts` | What each side said while photographed, and what differs |
 | `src/reuse.ts` | Taking one side of a comparison from an earlier run |
 | `src/markup.ts` | HTML normaliser and line diff |
+| `src/indexed.ts` | Writes the difference picture with a palette |
 | `src/runner.ts` | Runs the pairs, owns run folders and timeouts |
 | `src/report/index.ts` | Renders the report; decides what travels with it |
 | `src/report/shell.ts` | The document: chrome, controls, templates |

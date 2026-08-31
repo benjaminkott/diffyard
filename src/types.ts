@@ -591,6 +591,15 @@ export interface RunResult {
      */
     a: string;
     b: string;
+    /**
+     * Only the comparisons that came back with nothing, or null when every
+     * one of them came back with something.
+     *
+     * A capture that broke is worth another go on its own: it says nothing
+     * about the page, and the rest of the report does not need running again
+     * to find that out.
+     */
+    unfinished: string | null;
   };
   /**
    * Set when a side was taken from an earlier run, so a reader of the numbers

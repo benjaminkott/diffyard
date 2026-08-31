@@ -132,6 +132,7 @@ const RESULT: RunResult = {
     all: 'diffyard run diffyard.yaml',
     a: 'diffyard run diffyard.yaml --reuse b --reuse-from test-run',
     b: 'diffyard run diffyard.yaml --reuse a --reuse-from test-run',
+    unfinished: 'diffyard run diffyard.yaml --unfinished --into test-run',
   },
   reuse: null,
   comparisons: [
@@ -391,7 +392,8 @@ for (const scheme of ['light', 'dark'] as const) {
       // Usually only one side moved. Photographing the other again is half a
       // run spent proving it did not change.
       const choices = page.locator('#run-command .rerun__pick button');
-      assert.deepEqual(await choices.allTextContents(), ['both sides', 'A', 'B']);
+      // The fixture has one errored comparison, so the fourth choice is there.
+      assert.deepEqual(await choices.allTextContents(), ['both sides', 'A', 'B', 'the 1 that broke']);
 
       const line = page.locator('#run-command code');
       await choices.nth(1).click();
@@ -400,6 +402,10 @@ for (const scheme of ['light', 'dark'] as const) {
 
       await choices.nth(2).click();
       assert.match((await line.textContent()) ?? '', /--reuse a --reuse-from test-run/);
+
+      await choices.nth(3).click();
+      assert.match((await line.textContent()) ?? '', /--unfinished --into test-run/,
+        'and the ones that came back with nothing, on their own');
 
       await choices.nth(0).click();
       assert.equal(await line.textContent(), 'diffyard run diffyard.yaml');

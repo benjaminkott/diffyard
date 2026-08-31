@@ -150,7 +150,7 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
 
   return {
     commonMarkup: common,
-    commands: runCommandsFor(config, runId),
+    commands: runCommandsFor(config, runId, comparisons),
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
@@ -431,14 +431,24 @@ function commandFor(config: Config, runId: string, id: string): string {
  * old -- and photographing the other again is half a run spent proving it did
  * not change.
  */
-export function runCommandsFor(config: Config, runId: string): RunResult['commands'] {
+export function runCommandsFor(
+  config: Config,
+  runId: string,
+  comparisons: Comparison[]
+): RunResult['commands'] {
   const keeping = (side: Side) => [`--reuse ${side}`, `--reuse-from ${runId}`];
+  const unfinished = comparisons.some((entry) => entry.status === 'error' || entry.status === 'timeout');
 
   return {
     all: line(config, runId, []),
     // To capture A again, B is the side that is kept.
     a: line(config, runId, keeping('b'), false),
     b: line(config, runId, keeping('a'), false),
+    // It reads the report to find them, so it has to name it. A config that
+    // fixes output.runId has, and one that does not needs --into.
+    unfinished: unfinished
+      ? line(config, runId, config.runId ? ['--unfinished'] : ['--unfinished', `--into ${runId}`])
+      : null,
   };
 }
 

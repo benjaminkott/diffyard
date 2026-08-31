@@ -467,6 +467,17 @@ the old — and photographing the other again is half a run spent proving it did
 not change. To capture side A again, side B is the one kept, which is what
 `--reuse b` says.
 
+And where a capture broke rather than differed, there is a line for those alone:
+
+```
+diffyard run diffyard.yaml --unfinished
+```
+
+It reads the ids out of the report instead of taking them on the command line,
+because twenty of them is six hundred characters and the set is different every
+time it is worked through. The report is the one the config's `output.runId`
+names, or the one `--into` does.
+
 The report stays honest about having been assembled over time: every card says
 when its own picture was taken, and anything newer than the run reads
 *Refreshed* — see [What a card says](docs/the-report.md#what-a-card-says).
@@ -531,6 +542,7 @@ diffyard schema [file.json]
 | `--reuse-from <run>` | Which run to take it from; default the newest |
 | `--refresh <side>` | Capture this side even though the config reuses it |
 | `--case <id>` | One comparison exactly, by its id; comma-separated for several |
+| `--unfinished` | Only the comparisons that came back with nothing, read from the report |
 | `--into <run>` | Write the result back into that run, replacing its entries |
 | `-b, --browser <name>` | `chromium`, `firefox` or `webkit` |
 | `-t, --threshold <n>` | Allowed share of differing pixels, `0..1` |

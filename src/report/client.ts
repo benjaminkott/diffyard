@@ -1405,13 +1405,27 @@ export const SCRIPT = `
     if (result.commands) {
       const a = result.config.labelA || 'A';
       const b = result.config.labelB || 'B';
-      document.getElementById('run-command').append(
-        rerun(result.commands.all, 'Capture again', [
-          { label: 'both sides', command: result.commands.all },
-          { label: a, command: result.commands.a, title: 'Capture ' + a + ' again, and take ' + b + ' from this run' },
-          { label: b, command: result.commands.b, title: 'Capture ' + b + ' again, and take ' + a + ' from this run' },
-        ])
-      );
+      const choices = [
+        { label: 'both sides', command: result.commands.all },
+        { label: a, command: result.commands.a, title: 'Capture ' + a + ' again, and take ' + b + ' from this run' },
+        { label: b, command: result.commands.b, title: 'Capture ' + b + ' again, and take ' + a + ' from this run' },
+      ];
+
+      // Only where there is something to go back for. A capture that broke
+      // says nothing about the page, and the rest of the report does not need
+      // running again to find that out.
+      if (result.commands.unfinished) {
+        const broken = result.comparisons.filter(
+          (entry) => entry.status === 'error' || entry.status === 'timeout'
+        ).length;
+        choices.push({
+          label: 'the ' + broken + ' that broke',
+          command: result.commands.unfinished,
+          title: 'Only the comparisons that came back with nothing',
+        });
+      }
+
+      document.getElementById('run-command').append(rerun(result.commands.all, 'Capture again', choices));
     }
 
     buildSettings();

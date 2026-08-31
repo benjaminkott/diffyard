@@ -45,6 +45,7 @@ const OPTIONS = {
   'reuse-from': { type: 'string' as const },
   refresh: { type: 'string' as const },
   case: { type: 'string' as const },
+  unfinished: { type: 'boolean' as const },
   into: { type: 'string' as const },
   'run-id': { type: 'string' as const },
   viewport: { type: 'string' as const },
@@ -85,6 +86,7 @@ function help(): string {
     flag('  -f, --filter <text>', 'only scenarios whose group/name contains this') +
     flag('  -g, --group <name>', 'only this group, matched exactly') +
     flag('      --case <id>', 'one comparison exactly, by its id; comma-separated for several') +
+    flag('      --unfinished', 'only the comparisons that came back with nothing, from the report named by --into') +
     flag('      --into <run>', 'write the result back into that run, replacing its entries') +
     flag('  -b, --browser <name>', 'chromium | firefox | webkit') +
     flag('      --reuse <side>', "take a side from an earlier run: a, b or a,b") +
@@ -169,7 +171,7 @@ type Values = ReturnType<typeof parseArgs<{ options: typeof OPTIONS; allowPositi
 async function runCommand(configFile: string, values: Values): Promise<number> {
   let config: Config;
   try {
-    config = applyOverrides(loadConfig(configFile), values);
+    config = await applyOverrides(loadConfig(configFile), values);
   } catch (error) {
     if (error instanceof ConfigError) {
       process.stderr.write(`\n  ${MARK.error()} ${paint('bold', 'Configuration')}\n  ${error.message.split('\n').join('\n  ')}\n\n`);
@@ -255,7 +257,11 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
     progress.stop();
   }
 
-  const merged = typeof values.into === 'string' ? await mergeInto(result) : result;
+  // A partial run joins the report it was read from rather than replacing it.
+  // --into says so by naming the folder; --unfinished says so by having taken its
+  // list out of what is already there.
+  const partial = typeof values.into === 'string' || values.unfinished === true;
+  const merged = partial ? await mergeInto(result) : result;
   const artifact = await writeArtifact(merged, config, values);
 
   write(summary(result, artifact, width, merged));
@@ -432,7 +438,27 @@ async function writeArtifact(result: RunResult, config: Config, values: Values):
   return written;
 }
 
-function applyOverrides(config: Config, values: Values): Config {
+/**
+ * The scenarios behind a list of comparison ids.
+ *
+ * `only` elsewhere in the config would otherwise silence the very case that
+ * was asked for by name.
+ */
+function pickByIds(scenarios: Config['scenarios'], wanted: string[]): Config['scenarios'] {
+  const picked: Config['scenarios'] = [];
+
+  for (const scenario of scenarios) {
+    const base = `${scenario.group ? `${slug(scenario.group)}--` : ''}${slug(scenario.name)}`;
+    const viewports = scenario.viewports.filter((viewport) =>
+      wanted.includes(`${base}--${slug(viewport.name)}`)
+    );
+    if (viewports.length > 0) picked.push({ ...scenario, viewports, only: false });
+  }
+
+  return picked;
+}
+
+async function applyOverrides(config: Config, values: Values): Promise<Config> {
   const next: Config = { ...config };
 
   if (typeof values.out === 'string') next.outDir = resolve(values.out);
@@ -509,16 +535,7 @@ function applyOverrides(config: Config, values: Values): Config {
       .map((entry) => entry.trim().toLowerCase())
       .filter(Boolean);
 
-    const picked = [];
-    for (const scenario of next.scenarios) {
-      const base = `${scenario.group ? `${slug(scenario.group)}--` : ''}${slug(scenario.name)}`;
-      const viewports = scenario.viewports.filter((viewport) =>
-        wanted.includes(`${base}--${slug(viewport.name)}`)
-      );
-      // `only` elsewhere in the config would otherwise silence the very case
-      // that was asked for by name.
-      if (viewports.length > 0) picked.push({ ...scenario, viewports, only: false });
-    }
+    const picked = pickByIds(next.scenarios, wanted);
 
     if (picked.length === 0) {
       throw new ConfigError(
@@ -536,6 +553,51 @@ function applyOverrides(config: Config, values: Values): Config {
     // replaced, so refreshing one view leaves the other findings standing.
     next.runId = values.into;
     next.runFolder = true;
+  }
+
+  if (values.unfinished === true) {
+    // The comparisons that came back with nothing, read out of the report
+    // rather than typed. Twenty ids is six hundred characters of command
+    // line, and the set is different every time it is worked through -- so
+    // the line that does it has to name the report, not the cases.
+    //
+    // After --into, because that is one of the two ways the report is named;
+    // the other is a config that fixes output.runId, which a suite usually
+    // does.
+    if (!next.runId) {
+      throw new ConfigError(
+        '--unfinished has to be told which report to read.\n' +
+          'Name it with --into, or set output.runId so the suite has a folder of its own.'
+      );
+    }
+
+    const dir = join(next.outDir, next.runId);
+    let previous: RunResult;
+    try {
+      previous = JSON.parse(await readFile(join(dir, 'results.json'), 'utf8')) as RunResult;
+    } catch {
+      throw new ConfigError(`--unfinished found no report to read in ${shortPath(dir)}.`);
+    }
+
+    const broken = previous.comparisons.filter(
+      (entry) => entry.status === 'error' || entry.status === 'timeout'
+    );
+
+    if (broken.length === 0) {
+      throw new ConfigError(
+        `Nothing to retry: every comparison in ${shortPath(dir)} came back with a result.`
+      );
+    }
+
+    next.scenarios = pickByIds(next.scenarios, broken.map((entry) => entry.id.toLowerCase()));
+    next.runFolder = true;
+
+    if (next.scenarios.length === 0) {
+      throw new ConfigError(
+        `The ${broken.length} comparison${broken.length === 1 ? '' : 's'} that came back with nothing ` +
+          'are not in this config any more.'
+      );
+    }
   }
 
   if (typeof values.group === 'string') {

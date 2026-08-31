@@ -130,6 +130,31 @@ describe('reusing a side', { concurrency: false }, () => {
       'and comparing against it gives the same answer as capturing it did');
   });
 
+  /**
+   * Scoring a stored run again, without photographing anything.
+   *
+   * What a comparison passed or failed on -- the tolerances, the alignment,
+   * the ignore rules -- is decided after the pictures were taken, and none of
+   * it is in the fingerprint. So both sides can come out of an earlier run and
+   * only the judgement is done again, which is what tuning a threshold against
+   * nine hundred pages costs otherwise: another full capture.
+   */
+  it('scores a stored run again under a changed setting, with nothing captured', async () => {
+    const out = join(workDir, 'out-rescore');
+    const first = await runAndRecord(BASE, out);
+    const before = first.comparisons.find((entry) => entry.scenario === 'index');
+    assert.ok((before?.diff?.diffPixels ?? 0) > 0, 'the two sides differ to begin with');
+
+    const again = await runAndRecord(`${BASE}reuse:\n  side: a,b\ndiff:\n  threshold: 0.5\n`, out);
+    const after = again.comparisons.find((entry) => entry.scenario === 'index');
+
+    assert.equal(again.reuse?.recaptured, 0, 'nothing was photographed again');
+    assert.ok(after?.capture?.a.reusedFrom, 'side A came from the stored run');
+    assert.ok(after?.capture?.b.reusedFrom, 'and so did side B');
+    assert.equal(after?.diff?.diffPixels, before?.diff?.diffPixels, 'the same pixels, measured again');
+    assert.equal(after?.status, 'pass', 'and judged under the threshold this run was given');
+  });
+
   it('captures again when a setting no longer matches, and says so', async () => {
     const out = join(workDir, 'out-changed');
     await runAndRecord(BASE, out);

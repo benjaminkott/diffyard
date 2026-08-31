@@ -28,6 +28,22 @@ Nothing about the comparison itself is reused: both diffs are computed afresh
 every time, including the markup diff, which is why the numbers come out
 identical to a full run.
 
+## Scoring a run again
+
+Nothing that decides pass or fail is in the fingerprint — the tolerances, the
+alignment, the markup ignore rules and the thresholds are all applied after the
+pictures were taken. So both sides can come from an earlier run, and then
+nothing is photographed at all:
+
+```bash
+diffyard run diffyard.yaml --reuse a,b --reuse-from 2026-08-31_09-12-04-a1b2c3
+```
+
+which is how a threshold is tuned against nine hundred pages without capturing
+them again. Masks, hidden elements, viewports and the browser options are the
+exception: those change the photograph, so changing one captures that side
+again and the run says `settings changed`.
+
 ## Saying so, everywhere
 
 It must never be unclear which kind of reference a number was measured against,

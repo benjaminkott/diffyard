@@ -38,9 +38,37 @@ export interface Pixels {
   height: number;
 }
 
-/** The format screenshots are stored in for this run. */
-export function storageFormat(setting: ImageFormat): 'png' | 'webp' {
-  return setting;
+/**
+ * WebP holds nothing longer than this in either direction.
+ *
+ * A full-page screenshot of a long page on a narrow viewport goes past it
+ * easily: on a 902-page run, twenty pages did, all of them mobile, the tallest
+ * that fitted being 16,122 pixels.
+ */
+const WEBP_LIMIT = 16383;
+
+/**
+ * What a comparison's pictures can actually be stored as.
+ *
+ * Both sides or neither. The reading is taken from the stored pictures, so a
+ * comparison with one side through the encoder and one side not would be
+ * measuring the encoder as much as the page -- and this is exactly the case
+ * where that would happen, since a page over the limit is being compared
+ * against one near it.
+ *
+ * A format is a decision about the file. It must not cost a comparison, which
+ * is what it did: the encoder refused the picture, the capture failed, and the
+ * scenario was reported as one that could not be photographed.
+ */
+export async function formatForPair(setting: ImageFormat, sides: (Buffer | Pixels)[]): Promise<'png' | 'webp'> {
+  if (setting === 'png') return 'png';
+
+  for (const side of sides) {
+    const { width, height } = Buffer.isBuffer(side) ? await sharp(side).metadata() : side;
+    if ((width ?? 0) > WEBP_LIMIT || (height ?? 0) > WEBP_LIMIT) return 'png';
+  }
+
+  return 'webp';
 }
 
 /**

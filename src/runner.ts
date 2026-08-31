@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Capturer } from './capture.js';
 import { classifyRun } from './classify.js';
-import { forDiff, forStorage, storageFormat, toPixels } from './images.js';
+import { forDiff, forStorage, formatForPair, toPixels } from './images.js';
 import type { Pixels } from './images.js';
 import { caseFile, withoutDetail } from './report/pool.js';
 import { slug } from './config.js';
@@ -555,7 +555,13 @@ async function compare(
 
       report('compare');
 
-      const format = storageFormat(config.images);
+      // Not just what the run asked for: what these two pictures can be held
+      // in. A page too long for WebP falls back to PNG, and its counterpart
+      // with it, so both sides are still treated the same.
+      const format = await formatForPair(config.images, [
+        shotA.pixels ?? shotA.png,
+        shotB.pixels ?? shotB.png,
+      ]);
 
       // A side already in the target format is written through untouched:
       // re-encoding a reused picture would both spend the time to produce the

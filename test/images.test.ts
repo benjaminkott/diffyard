@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { PNG } from 'pngjs';
-import { forDiff, forStorage, formatOf, storageFormat, toPixels } from '../dist/images.js';
+import { forDiff, forStorage, formatOf, formatForPair, toPixels } from '../dist/images.js';
 import { diffImages } from '../dist/diff.js';
 import { solidPng } from './helpers/server.ts';
 
@@ -24,8 +24,8 @@ describe('how screenshots are stored', () => {
   });
 
   it('writes WebP unless asked otherwise', async () => {
-    assert.equal(storageFormat('webp'), 'webp');
-    assert.equal(storageFormat('png'), 'png');
+    assert.equal(await formatForPair('webp', [shot()]), 'webp');
+    assert.equal(await formatForPair('png', [shot()]), 'png');
 
     const stored = await forStorage(shot(), 'webp');
     assert.deepEqual(stored.subarray(0, 4), Buffer.from('RIFF', 'latin1'));
@@ -66,6 +66,29 @@ describe('how screenshots are stored', () => {
 
   it('hands a PNG straight to the diff instead of decoding it twice', async () => {
     assert.equal(await toPixels(shot(), 'png'), null);
+  });
+
+  it('falls back to PNG for a picture WebP cannot hold', async () => {
+    // WebP stops at 16383 in either direction, and a full-page screenshot of a
+    // long page on a narrow viewport goes past that easily. The encoder
+    // refusing it used to fail the capture, so the format cost a comparison.
+    const tall = (height: number) => ({ data: Buffer.alloc(0), width: 375, height });
+
+    assert.equal(await formatForPair('webp', [tall(16383)]), 'webp', 'the last size that fits');
+    assert.equal(await formatForPair('webp', [tall(16384)]), 'png', 'one past it');
+    assert.equal(await formatForPair('webp', [{ data: Buffer.alloc(0), width: 16384, height: 100 }]), 'png',
+      'either direction');
+  });
+
+  it('takes both sides down together or neither', async () => {
+    // The reading is taken from the stored pictures, so one side through the
+    // encoder and one side not would measure the encoder as much as the page.
+    const ok = { data: Buffer.alloc(0), width: 375, height: 900 };
+    const tall = { data: Buffer.alloc(0), width: 375, height: 20000 };
+
+    assert.equal(await formatForPair('webp', [ok, tall]), 'png');
+    assert.equal(await formatForPair('webp', [tall, ok]), 'png');
+    assert.equal(await formatForPair('webp', [ok, ok]), 'webp');
   });
 
   it('takes raw pixels as well as a picture', async () => {

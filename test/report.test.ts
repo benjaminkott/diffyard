@@ -568,6 +568,32 @@ describe('the report and the run beside it', () => {
   });
 });
 
+describe('the console comparison', () => {
+  it('puts each side in its own column and marks what only one said', async () => {
+    const { page, errors } = await open('light');
+
+    await page.locator('.tile').first().click();
+    await page.locator('#modes button[data-mode="console"]').click();
+    await page.waitForTimeout(300);
+
+    assert.equal(await page.locator('.logs__side').count(), 2, 'one column per side');
+    assert.equal(await page.locator('.logline').count(), 3, 'every line the run kept');
+
+    // The 404 is on B alone, and that is the whole reason to look at this view.
+    const only = page.locator('.logline--only');
+    assert.equal(await only.count(), 1);
+    assert.match((await only.textContent()) ?? '', /HTTP 404/);
+    assert.match((await only.locator('.logline__kind').textContent()) ?? '', /httperror/);
+
+    // A line said twice says so; a line said once does not carry an empty chip.
+    assert.equal(await page.locator('.logline__count').count(), 2, 'only the repeated ones');
+    assert.match((await page.locator('.logline__count').first().textContent()) ?? '', /×2/);
+
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+});
+
 describe('report navigation', () => {
   it('opens the scenario named in the hash', async () => {
     const { page } = await open('light');

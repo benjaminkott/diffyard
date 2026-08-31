@@ -18,6 +18,24 @@ export const SCRIPT = `
 
   const list = document.getElementById('list');
   const template = document.getElementById('card-template');
+
+  /**
+   * Templates are written to be read, which means indented, which means text
+   * nodes between their elements. Those are not part of the structure and they
+   * are not free -- between inline elements a browser renders them as a space
+   * -- so they come out once, here, rather than in every clone.
+   */
+  for (const held of document.querySelectorAll('template')) {
+    const walk = document.createTreeWalker(held.content, NodeFilter.SHOW_TEXT);
+    const blank = [];
+    while (walk.nextNode()) if (!walk.currentNode.nodeValue.trim()) blank.push(walk.currentNode);
+    for (const node of blank) node.remove();
+  }
+
+  /** One template's structure, cloned, waiting to be filled in. */
+  function clone(id) {
+    return document.getElementById(id).content.cloneNode(true).firstElementChild;
+  }
   const KIND_LABELS = ${JSON.stringify(KIND_LABELS)};
   const state = { filter: 'all', kind: 'any', sort: 'diff', query: '', scenario: null, mode: 'diff' };
 
@@ -173,22 +191,16 @@ export const SCRIPT = `
    * hand, once per finding.
    */
   function rerun(command, label) {
-    const container = document.createElement('div');
-    container.className = 'rerun';
+    const container = clone('rerun-template');
 
-    if (label) {
-      const what = document.createElement('span');
-      what.className = 'rerun__label';
-      what.textContent = label;
-      container.append(what);
-    }
+    const what = container.querySelector('.rerun__label');
+    if (label) what.textContent = label;
+    else what.remove();
 
-    const line = document.createElement('code');
+    const line = container.querySelector('code');
     line.textContent = command;
 
-    const copy = document.createElement('button');
-    copy.type = 'button';
-    copy.textContent = 'Copy';
+    const copy = container.querySelector('button');
     copy.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(command);
@@ -206,7 +218,6 @@ export const SCRIPT = `
       setTimeout(() => { copy.textContent = 'Copy'; }, 2000);
     });
 
-    container.append(line, copy);
     return container;
   }
 
@@ -563,12 +574,8 @@ export const SCRIPT = `
       [result.config.labelA || 'A', logs.a, textsB],
       [result.config.labelB || 'B', logs.b, textsA],
     ]) {
-      const column = document.createElement('section');
-      column.className = 'logs__side';
-
-      const head = document.createElement('h3');
-      head.textContent = label;
-      column.append(head);
+      const column = clone('logs-side-template');
+      column.querySelector('h3').textContent = label;
 
       if (entries.length === 0) {
         const quiet = document.createElement('p');
@@ -578,25 +585,18 @@ export const SCRIPT = `
       }
 
       for (const entry of entries) {
-        const row = document.createElement('div');
-        row.className = 'logline' + (others.has(entry.text) ? '' : ' logline--only');
+        const row = clone('logline-template');
+        if (!others.has(entry.text)) row.classList.add('logline--only');
 
-        const kind = document.createElement('span');
-        kind.className = 'logline__kind logline__kind--' + entry.kind;
+        const kind = row.querySelector('.logline__kind');
+        kind.classList.add('logline__kind--' + entry.kind);
         kind.textContent = entry.kind;
 
-        const text = document.createElement('span');
-        text.className = 'logline__text';
-        text.textContent = entry.text;
+        row.querySelector('.logline__text').textContent = entry.text;
 
-        row.append(kind, text);
-
-        if (entry.count > 1) {
-          const times = document.createElement('span');
-          times.className = 'logline__count';
-          times.textContent = '×' + entry.count;
-          row.append(times);
-        }
+        const times = row.querySelector('.logline__count');
+        if (entry.count > 1) times.textContent = '×' + entry.count;
+        else times.remove();
 
         column.append(row);
       }
@@ -678,51 +678,33 @@ export const SCRIPT = `
   }
 
   function patchTable(hunks) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'patch';
-    const table = document.createElement('table');
+    const wrapper = clone('patch-template');
+    const table = wrapper.querySelector('table');
 
     for (const hunk of hunks) {
-      const header = document.createElement('tr');
-      header.className = 'hunk';
-      const cell = document.createElement('td');
-      cell.colSpan = 3;
-      cell.textContent = '@@ line ' + (hunk.startA + 1) + ' (A) / ' + (hunk.startB + 1) + ' (B)';
-      header.append(cell);
+      const header = clone('patch-hunk-template');
+      header.querySelector('td').textContent =
+        '@@ line ' + (hunk.startA + 1) + ' (A) / ' + (hunk.startB + 1) + ' (B)';
       table.append(header);
 
       let lineA = hunk.startA + 1;
       let lineB = hunk.startB + 1;
 
       for (const line of hunk.lines) {
-        const row = document.createElement('tr');
+        const row = clone('patch-line-template');
         row.className = line.type;
 
-        const numberA = document.createElement('td');
-        numberA.className = 'num';
-        const numberB = document.createElement('td');
-        numberB.className = 'num';
+        const cells = row.querySelectorAll('td');
+        if (line.type !== 'add') cells[0].textContent = String(lineA++);
+        if (line.type !== 'remove') cells[1].textContent = String(lineB++);
 
-        if (line.type === 'add') {
-          numberB.textContent = String(lineB++);
-        } else if (line.type === 'remove') {
-          numberA.textContent = String(lineA++);
-        } else {
-          numberA.textContent = String(lineA++);
-          numberB.textContent = String(lineB++);
-        }
-
-        const code = document.createElement('td');
-        code.className = 'code';
         const marker = line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' ';
-        code.textContent = marker + line.text;
+        cells[2].textContent = marker + line.text;
 
-        row.append(numberA, numberB, code);
         table.append(row);
       }
     }
 
-    wrapper.append(table);
     return wrapper;
   }
 
@@ -955,28 +937,18 @@ export const SCRIPT = `
     const entries = viewports.map((viewport) => cells.get(key(scenario, viewport))).filter(Boolean);
     const lead = entries.find((entry) => entry.files && entry.files.diff) ?? entries[0];
 
-    const element = document.createElement('button');
-    element.type = 'button';
-    element.className = 'tile';
+    const element = clone('tile-template');
+    element.querySelector('.tile__name').textContent = lead ? lead.scenario : scenario;
 
-    const head = document.createElement('div');
-    head.className = 'tile__head';
-    const name = document.createElement('span');
-    name.className = 'tile__name';
-    name.textContent = lead ? lead.scenario : scenario;
-    head.append(name);
-    element.append(head);
-
+    const where = element.querySelector('.tile__where');
     if (lead && lead.urlA) {
-      const where = document.createElement('span');
-      where.className = 'tile__where';
       where.textContent = short(lead.urlA) + ' → ' + short(lead.urlB);
       element.title = lead.urlA + '  →  ' + lead.urlB;
-      element.append(where);
+    } else {
+      where.remove();
     }
 
-    const shot = document.createElement('div');
-    shot.className = 'tile__shot';
+    const shot = element.querySelector('.tile__shot');
     const source = lead && lead.files ? src(lead.id, 'diff') || src(lead.id, 'a') : '';
     const flat = Boolean(lead && lead.files && !src(lead.id, 'diff'));
 
@@ -1006,14 +978,11 @@ export const SCRIPT = `
       shot.classList.add('tile__shot--none');
       shot.textContent = lead && lead.error ? 'not captured' : 'no image';
     }
-    element.append(shot);
 
-    const rows = document.createElement('div');
-    rows.className = 'tile__rows';
+    const rows = element.querySelector('.tile__rows');
     for (const viewport of viewports) {
       rows.append(tileRow(viewport, cells.get(key(scenario, viewport)), scale));
     }
-    element.append(rows);
 
     // What the tile's viewports found between them, so the kind is readable
     // without opening the scenario.
@@ -1042,44 +1011,39 @@ export const SCRIPT = `
   }
 
   function tileRow(viewport, comparison, scale) {
-    const row = document.createElement('div');
-    row.className = 'tile__row';
+    const row = clone('tile-row-template');
+    row.querySelector('.tile__vp').textContent = viewport;
 
-    const label = document.createElement('span');
-    label.className = 'tile__vp';
-    label.textContent = viewport;
-    row.append(label);
+    const state = row.querySelector('.tile__row--state');
+    const percent = row.querySelector('.tile__pct');
+    const bar = row.querySelector('.tile__bar');
 
+    // A row says either what went wrong or how much differs, never both, so
+    // the half it is not is taken out rather than left empty: an empty span
+    // still takes the gap its neighbours are spaced by.
     if (!comparison || comparison.status === 'error' || comparison.status === 'timeout' || comparison.status === 'skipped') {
-      const state = document.createElement('span');
-      state.className = 'tile__row--state';
+      percent.remove();
+      bar.remove();
       state.textContent = !comparison
         ? 'not run'
         : comparison.status === 'timeout'
           ? 'timed out'
           : comparison.status;
       if (comparison && comparison.status === 'skipped') row.classList.add('tile__row--skipped');
-      row.append(state);
       return row;
     }
+
+    state.remove();
 
     const ratio = comparison.diff ? comparison.diff.ratio : 0;
     if (comparison.status === 'pass') row.classList.add('tile__row--pass');
     else if (ratio >= scale * 0.5) row.classList.add('tile__row--heavy');
 
-    const percent = document.createElement('span');
-    percent.className = 'tile__pct';
     percent.textContent = pct(ratio);
-
-    const bar = document.createElement('span');
-    bar.className = 'tile__bar';
-    const fill = document.createElement('span');
-    fill.className = 'tile__fill';
     // A hairline for a non-zero difference, so "tiny" never reads as "none".
-    fill.style.width = ratio === 0 ? '0' : Math.max(3, (ratio / scale) * 100) + '%';
-    bar.append(fill);
+    bar.querySelector('.tile__fill').style.width =
+      ratio === 0 ? '0' : Math.max(3, (ratio / scale) * 100) + '%';
 
-    row.append(percent, bar);
     return row;
   }
 

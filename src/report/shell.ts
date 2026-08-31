@@ -125,6 +125,61 @@ export function shell(result: RunResult, config: Config, data: string): string {
   <main id="list"></main>
 </section>
 
+<!--
+  The structures the report repeats, written as markup rather than assembled a
+  node at a time. The line is between structure and behaviour: what a thing is
+  made of belongs here, what it does when it is touched stays in the client.
+-->
+<template id="patch-template">
+  <div class="patch"><table></table></div>
+</template>
+
+<template id="patch-hunk-template">
+  <tr class="hunk"><td colspan="3"></td></tr>
+</template>
+
+<template id="patch-line-template">
+  <tr><td class="num"></td><td class="num"></td><td class="code"></td></tr>
+</template>
+
+<template id="tile-template">
+  <button type="button" class="tile">
+    <div class="tile__head"><span class="tile__name"></span></div>
+    <span class="tile__where"></span>
+    <div class="tile__shot"></div>
+    <div class="tile__rows"></div>
+  </button>
+</template>
+
+<template id="tile-row-template">
+  <div class="tile__row">
+    <span class="tile__vp"></span>
+    <span class="tile__row--state"></span>
+    <span class="tile__pct"></span>
+    <span class="tile__bar"><span class="tile__fill"></span></span>
+  </div>
+</template>
+
+<template id="logs-side-template">
+  <section class="logs__side"><h3></h3></section>
+</template>
+
+<template id="logline-template">
+  <div class="logline">
+    <span class="logline__kind"></span>
+    <span class="logline__text"></span>
+    <span class="logline__count"></span>
+  </div>
+</template>
+
+<template id="rerun-template">
+  <div class="rerun">
+    <span class="rerun__label"></span>
+    <code></code>
+    <button type="button">Copy</button>
+  </div>
+</template>
+
 <template id="card-template">
   <article class="card">
     <header class="card__head">

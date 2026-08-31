@@ -249,7 +249,10 @@ export const CONFIG_SCHEMA = {
         freeze: {
           type: 'boolean',
           default: true,
-          description: 'Stop animations, transitions and the text caret.',
+          description:
+            'Stop animations, transitions and the text caret. Video and canvas are hidden, ' +
+            'since neither can be held still; they keep their space, so a player that moved ' +
+            'still shows as one.',
         },
         triggerLazyLoad: {
           type: 'boolean',

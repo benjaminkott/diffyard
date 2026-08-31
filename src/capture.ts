@@ -130,6 +130,18 @@ const FREEZE_CSS = `
   scroll-behavior: auto !important;
 }
 input, textarea, [contenteditable] { caret-color: transparent !important; }
+/*
+ * Neither can be held still from here. A canvas is whatever a script last drew
+ * on it. A video can be paused and wound back, which sounds like enough -- but
+ * whether Chromium has painted that frame by the time the screenshot is taken
+ * is not something waiting decides: photographing one page twice, with the
+ * videos paused, came out 0.005% apart at one wait and 12% apart at another,
+ * and the differing rows were inside the players every time.
+ *
+ * They keep their space, so a player that moved or changed size still shows as
+ * everything around it moving. What is given up is the frame, which is the one
+ * part that could not have been compared anyway.
+ */
 video, canvas { visibility: hidden !important; }
 `;
 

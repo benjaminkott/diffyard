@@ -27,6 +27,24 @@ control](screenshots/report-detail-onion.webp)
 Beside these sit **Diff**, **Slider**, **Markup** and **Console**, shown in the
 [README](../README.md#six-ways-to-look-at-one-comparison).
 
+## The address is the view
+
+Which filter, which sort, the search box, the grouping, the comparison that is
+open and the view it is being read in all live in the page's address:
+
+```
+index.html#filter=fail&sort=name&q=venue&open=t3con25/osba&mode=markup
+```
+
+So a reload keeps them — which matters most for the page people reload most,
+the one a run is still filling in, where the alternative is setting the same
+four controls again every thirty seconds. The browser's back button works on
+it, and a filtered view is something that can be sent to someone.
+
+Only what differs from the plain view is written, so an untouched report has a
+bare address. An address naming a filter this report does not offer falls back
+to *All* rather than showing an empty list with no control saying why.
+
 ## What the run was told to do
 
 A number nobody can trace back to the settings that produced it is not a

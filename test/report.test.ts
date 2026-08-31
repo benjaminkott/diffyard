@@ -891,6 +891,58 @@ describe('report layout', () => {
     await page.close();
   });
 
+  it('keeps the view across a reload', async () => {
+    // The page people reload most is the one a run is still filling in, and
+    // setting the same four controls again every thirty seconds is the whole
+    // difference between watching a run and fighting the report.
+    const { page } = await open('light');
+
+    await page.locator('.filters button[data-filter="fail"]').click();
+    await page.selectOption('#sort', 'name');
+    await page.fill('#search', 'home');
+    await page.waitForTimeout(200);
+    const before = await page.locator('#tiles .tile').count();
+    assert.ok(before > 0, 'something matches, or the test proves nothing');
+
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.reload();
+    await page.waitForTimeout(300);
+
+    assert.deepEqual(errors, []);
+    assert.equal(
+      await page.locator('.filters button.is-active').getAttribute('data-filter'),
+      'fail',
+      'the filter it was left on'
+    );
+    assert.equal(await page.inputValue('#sort'), 'name');
+    assert.equal(await page.inputValue('#search'), 'home');
+    assert.equal(await page.locator('#tiles .tile').count(), before, 'and the same list');
+    await page.close();
+  });
+
+  it('keeps the comparison that was open, and the view mode', async () => {
+    const { page } = await open('light');
+
+    await page.locator('#tiles .tile').first().click();
+    await page.waitForTimeout(150);
+    await page.locator('#modes button[data-mode="side"]').click();
+    await page.waitForTimeout(150);
+    const name = await page.locator('#detail-name').textContent();
+
+    await page.reload();
+    await page.waitForTimeout(300);
+
+    assert.equal(await page.locator('#detail').isVisible(), true, 'still on the comparison');
+    assert.equal(await page.locator('#detail-name').textContent(), name);
+    assert.equal(
+      await page.locator('#modes button.is-active').getAttribute('data-mode'),
+      'side',
+      'and in the view it was being read in'
+    );
+    await page.close();
+  });
+
   it('marks where the page differs on the minimap', async () => {
     const { page } = await open('light');
     await page.locator('#tiles > .tile').first().click();

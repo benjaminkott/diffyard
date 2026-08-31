@@ -1309,9 +1309,7 @@ export const SCRIPT = `
     render();
 
     if (!options || options.scroll !== false) window.scrollTo({ top: 0 });
-    if (!options || options.hash !== false) {
-      location.hash = encodeURIComponent(scenario);
-    }
+    if (!options || options.hash !== false) writeView(true);
   }
 
   function showOverview(options) {
@@ -1321,9 +1319,7 @@ export const SCRIPT = `
     document.documentElement.dataset.view = 'overview';
     render();
 
-    if (!options || options.hash !== false) {
-      history.pushState(null, '', location.pathname + location.search);
-    }
+    if (!options || options.hash !== false) writeView(true);
   }
 
   function step(direction) {
@@ -1340,6 +1336,7 @@ export const SCRIPT = `
       // The kinds are a question about the list, so answering it means going
       // back to the list rather than re-rendering the one view being read.
       if (state.scenario) showOverview();
+      writeView();
       buildOverview();
     });
   }
@@ -1348,6 +1345,7 @@ export const SCRIPT = `
   if (grouping) {
     grouping.addEventListener('change', (event) => {
       state.grouped = event.target.checked;
+      writeView();
       buildOverview();
     });
   }
@@ -1359,6 +1357,7 @@ export const SCRIPT = `
     document.querySelectorAll('#modes button').forEach((other) =>
       other.classList.toggle('is-active', other === button)
     );
+    writeView();
     render();
   });
 
@@ -1366,13 +1365,114 @@ export const SCRIPT = `
   document.getElementById('prev').addEventListener('click', () => step(-1));
   document.getElementById('next').addEventListener('click', () => step(1));
 
-  /** The hash is the address of a view, so the browser's buttons work too. */
-  function applyHash() {
-    const requested = decodeURIComponent(location.hash.replace(/^#/, ''));
-    const known = requested && result.comparisons.some((entry) => qualify(entry) === requested);
+  /**
+   * The view as an address.
+   *
+   * A report is a page people reload -- while a run is still filling it in,
+   * above all -- and the filters have to survive that, or watching a run means
+   * setting the same four controls again every thirty seconds. In the address
+   * rather than in storage: it is the one place that works from a file:// URL
+   * in every browser, it gives the back button something to go back to, and a
+   * filtered view becomes something that can be sent to someone.
+   *
+   * Only what differs from the plain view is written, so an untouched report
+   * still has a bare address.
+   */
+  const DEFAULTS = { open: '', mode: 'diff', filter: 'all', kind: 'any', sort: 'diff', group: '1', q: '' };
 
-    if (known && requested !== state.scenario) openScenario(requested, { hash: false });
-    else if (!requested && state.scenario) showOverview({ hash: false });
+  function readView() {
+    const raw = location.hash.replace(/^#/, '');
+    const view = Object.assign({}, DEFAULTS);
+    if (!raw) return view;
+
+    // A hash from before the view was addressable is a scenario name.
+    if (raw.indexOf('=') === -1) {
+      view.open = decodeURIComponent(raw);
+      return view;
+    }
+
+    for (const part of raw.split('&')) {
+      const at = part.indexOf('=');
+      if (at === -1) continue;
+      const key = part.slice(0, at);
+      if (!Object.prototype.hasOwnProperty.call(DEFAULTS, key)) continue;
+      try {
+        view[key] = decodeURIComponent(part.slice(at + 1));
+      } catch (error) {
+        view[key] = part.slice(at + 1);
+      }
+    }
+
+    return view;
+  }
+
+  function writeView(push) {
+    const view = {
+      open: state.scenario || '',
+      mode: state.mode,
+      filter: state.filter,
+      kind: state.kind,
+      sort: state.sort,
+      group: state.grouped ? '1' : '0',
+      q: state.query,
+    };
+
+    const parts = [];
+    for (const key of Object.keys(DEFAULTS)) {
+      if (view[key] === DEFAULTS[key]) continue;
+      parts.push(key + '=' + encodeURIComponent(view[key]));
+    }
+
+    const url = location.pathname + location.search + (parts.length > 0 ? '#' + parts.join('&') : '');
+    try {
+      if (push) history.pushState(null, '', url);
+      else history.replaceState(null, '', url);
+    } catch (error) {
+      // Some browsers refuse a history entry for a file:// URL. The hash alone
+      // still carries the view, which is what has to survive the reload.
+      location.hash = parts.join('&');
+    }
+  }
+
+  /** The controls, told what the address says. */
+  function syncControls() {
+    document.querySelectorAll('.filters button[data-filter]').forEach((button) =>
+      button.classList.toggle('is-active', button.dataset.filter === state.filter)
+    );
+    const kinds = document.getElementById('kind');
+    if (kinds) kinds.value = state.kind;
+    document.getElementById('sort').value = state.sort;
+    const grouped = document.getElementById('grouped');
+    if (grouped) grouped.checked = state.grouped;
+    document.getElementById('search').value = state.query;
+    document.querySelectorAll('#modes button[data-mode]').forEach((button) =>
+      button.classList.toggle('is-active', button.dataset.mode === state.mode)
+    );
+  }
+
+  /** The address is the view, so the browser's buttons work on it too. */
+  function applyHash() {
+    const view = readView();
+
+    // A filter or a kind this report does not offer -- an address from a
+    // different run, or one written before a kind stopped being present --
+    // would leave the list showing nothing with no control saying why.
+    const offered = document.querySelector('.filters button[data-filter="' + view.filter + '"]');
+    state.filter = offered ? view.filter : DEFAULTS.filter;
+    const kinds = document.getElementById('kind');
+    const kindOffered = kinds && Array.prototype.some.call(kinds.options, (option) => option.value === view.kind);
+    state.kind = kindOffered ? view.kind : DEFAULTS.kind;
+    state.sort = view.sort;
+    state.grouped = view.group !== '0';
+    state.query = view.q;
+    state.mode = view.mode;
+
+    syncControls();
+    buildOverview();
+
+    const known = view.open && result.comparisons.some((entry) => qualify(entry) === view.open);
+    if (known) openScenario(view.open, { hash: false });
+    else if (state.scenario) showOverview({ hash: false });
   }
 
   window.addEventListener('hashchange', applyHash);
@@ -1393,15 +1493,18 @@ export const SCRIPT = `
       other.classList.toggle('is-active', other === button)
     );
     if (state.scenario) showOverview();
+    writeView();
     buildOverview();
   });
   document.getElementById('sort').addEventListener('change', (event) => {
     state.sort = event.target.value;
+    writeView();
     buildOverview();
   });
   document.getElementById('search').addEventListener('input', (event) => {
     state.query = event.target.value;
     if (state.scenario) showOverview();
+    writeView();
     buildOverview();
   });
 

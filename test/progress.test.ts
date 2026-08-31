@@ -93,17 +93,33 @@ describe('with several comparisons in flight', () => {
 });
 
 describe('the estimate', () => {
-  it('is divided by the workers', () => {
-    // Ten left at four seconds each is forty seconds of work, but on four
-    // workers it is ten — an estimate four times the truth is worse than none.
-    const { bar, written } = progress(4);
-    bar.start(11);
-    bar.update({ id: 'a', index: 0, total: 11, label: 'x @ desktop', phase: 'capture' });
-    bar.complete('  ✓ x', done('a', 4000));
-    bar.update({ id: 'b', index: 1, total: 11, label: 'y @ desktop', phase: 'capture' });
+  /** Finishes `count` comparisons of `total`, and says what the bar wrote. */
+  function afterFinishing(count: number, total: number, workers = 4): string {
+    const { bar, written } = progress(workers);
+    bar.start(total);
+    for (let at = 0; at < count; at += 1) {
+      bar.update({ id: `c${at}`, index: at, total, label: 'x @ desktop', phase: 'capture' });
+      bar.complete(`  ✓ c${at}`, done(`c${at}`, 4000));
+    }
+    bar.update({ id: 'next', index: count, total, label: 'y @ desktop', phase: 'capture' });
     bar.stop();
+    return written();
+  }
 
-    assert.match(written(), /10\.0s left/);
+  it('waits until enough of the run is behind it', () => {
+    // An average of one comparison multiplied by the nine hundred left moved
+    // the estimate by five minutes between two lines. It is a measurement of
+    // the run, and one comparison is not one.
+    assert.doesNotMatch(afterFinishing(1, 200), /left/);
+    assert.doesNotMatch(afterFinishing(9, 200), /left/, 'nor is a twentieth of it, yet');
+    assert.match(afterFinishing(10, 200), /left/, 'a twentieth is');
+  });
+
+  it('waits for the workers on a short run, where a twentieth is nothing', () => {
+    // Four workers finishing their first four say nothing about the pace: they
+    // all started at once, so the first four times are one measurement.
+    assert.doesNotMatch(afterFinishing(4, 20), /left/);
+    assert.match(afterFinishing(8, 20), /left/);
   });
 
   it('says nothing until something has finished', () => {

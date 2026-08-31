@@ -56,7 +56,6 @@ export class Progress {
   private index = 0;
   private total = 0;
   private startedAt = Date.now();
-  private readonly durations: number[] = [];
   private readonly running = new Map<string, Running>();
   private active = false;
   /** Height of the block last drawn, so it can be erased before the next one. */
@@ -97,7 +96,6 @@ export class Progress {
 
   /** Prints a finished comparison above the live block. */
   complete(line: string, comparison: Comparison): void {
-    this.durations.push(comparison.durationMs);
     this.running.delete(comparison.id);
 
     this.erase();
@@ -183,15 +181,28 @@ export class Progress {
     return paint('blue', '━'.repeat(filled)) + paint('grey', '━'.repeat(width - filled));
   }
 
-  /** Elapsed time, plus an estimate once there is anything to estimate from. */
+  /**
+   * Elapsed time, plus an estimate once one is worth showing.
+   *
+   * The estimate is the run's own throughput -- the time it has taken, over
+   * what it has got through -- rather than the average comparison divided by
+   * the workers. Both land within about a tenth of the truth, measured over a
+   * nine-hundred page run; the difference is that this one assumes nothing.
+   * Four workers on a site that serves two at a time are not four, and the
+   * time spent packing the pictures is not in a comparison's duration at all.
+   *
+   * What made the old estimate read as a guess was not its accuracy but its
+   * footing: shown from the first comparison, an average of one multiplied by
+   * nine hundred, it moved by as much as five minutes between two lines. Held
+   * back until a twentieth of the run is behind it, the largest step it takes
+   * is under a minute.
+   */
   private timing(): string {
     const elapsed = Date.now() - this.startedAt;
-    if (this.durations.length === 0) return ` · ${formatDuration(elapsed)}`;
+    const enough = Math.max(2 * Math.max(1, this.options.workers), Math.ceil(this.total / 20));
+    if (this.index < enough) return ` · ${formatDuration(elapsed)}`;
 
-    const average = this.durations.reduce((sum, value) => sum + value, 0) / this.durations.length;
-    // Divided by the workers, because that many are being worked through at
-    // once — otherwise the estimate is four times the truth on four workers.
-    const left = ((this.total - this.index) * average) / Math.max(1, this.options.workers);
+    const left = (this.total - this.index) * (elapsed / this.index);
     return ` · ${formatDuration(elapsed)} · ${formatDuration(left)} left`;
   }
 

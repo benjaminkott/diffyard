@@ -106,20 +106,27 @@ describe('the estimate', () => {
     return written();
   }
 
-  it('waits until enough of the run is behind it', () => {
-    // An average of one comparison multiplied by the nine hundred left moved
-    // the estimate by five minutes between two lines. It is a measurement of
-    // the run, and one comparison is not one.
-    assert.doesNotMatch(afterFinishing(1, 200), /left/);
-    assert.doesNotMatch(afterFinishing(9, 200), /left/, 'nor is a twentieth of it, yet');
-    assert.match(afterFinishing(10, 200), /left/, 'a twentieth is');
+  it('waits for a second wave of workers', () => {
+    // Four workers finishing their first four say nothing about the pace: they
+    // all started together, so those four times are one measurement, not four.
+    assert.doesNotMatch(afterFinishing(4, 200), /left/);
+    assert.doesNotMatch(afterFinishing(7, 200), /left/);
+    assert.match(afterFinishing(8, 200), /left/, 'twice the workers is a second reading');
   });
 
-  it('waits for the workers on a short run, where a twentieth is nothing', () => {
-    // Four workers finishing their first four say nothing about the pace: they
-    // all started at once, so the first four times are one measurement.
+  it('does not wait for a wave that is most of a short run', () => {
+    // Eight of twenty is nearly half the run; by then the estimate has little
+    // left to estimate. A quarter will do where a wave would be too much.
+    assert.match(afterFinishing(5, 20), /left/);
     assert.doesNotMatch(afterFinishing(4, 20), /left/);
-    assert.match(afterFinishing(8, 20), /left/);
+  });
+
+  it('keeps saying it once it has started', () => {
+    // The number eases towards each new reading rather than being set to it,
+    // so it must not vanish again when a slow comparison lands.
+    assert.match(afterFinishing(8, 200), /left/);
+    assert.match(afterFinishing(50, 200), /left/);
+    assert.match(afterFinishing(199, 200), /left/);
   });
 
   it('says nothing until something has finished', () => {

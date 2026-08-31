@@ -358,6 +358,14 @@ export const CONFIG_SCHEMA = {
           default: false,
           description: 'Set when attribute order is not stable between the systems.',
         },
+        ignoreBaseUrl: {
+          type: 'boolean',
+          default: true,
+          description:
+            "Replace each side's own address with the same token before comparing, so two " +
+            'systems on two hosts do not differ on every absolute address the page writes. ' +
+            "An address on one side pointing at the other's host is still a difference.",
+        },
         ignoreAttributes: {
           type: 'array',
           items: { type: 'string' },

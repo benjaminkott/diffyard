@@ -1475,6 +1475,7 @@ export const SCRIPT = `
         ['Ignored attributes', listOf(settings.markup.ignoreAttributes)],
         ['Ignored selectors', listOf(settings.markup.ignoreSelectors)],
         ['Sort attributes', yes(settings.markup.sortAttributes)],
+        ['Own address ignored', yes(settings.markup.ignoreBaseUrl)],
       ]],
       ['Console', [
         ['Enabled', yes(settings.logs.enabled)],

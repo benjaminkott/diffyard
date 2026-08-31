@@ -280,6 +280,7 @@ const RESULT: RunResult = {
       ignoreComments: true,
       normalizeWhitespace: true,
       sortAttributes: false,
+      ignoreBaseUrl: true,
       maxHunksInReport: 40,
     },
     logs: {

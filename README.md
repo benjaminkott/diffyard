@@ -405,6 +405,14 @@ is captured at screenshot time, so an opened menu is part of the comparison. The
 report shows it with line numbers; the full unified diff lands next to the
 screenshots as a `.patch` file.
 
+The two systems sit on two hosts, so every absolute address the page writes
+would differ — hundreds of changed lines per comparison, all saying the same
+thing. Each side's own address is replaced with `{base}` before comparing, and
+the case worth catching survives it: an address on one side pointing at the
+*other* side's host is still reported. Turn it off with
+`markup.ignoreBaseUrl: false`. What is written to disk always keeps the
+addresses as they were served.
+
 ```yaml
 markup:
   enabled: true

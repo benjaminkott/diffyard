@@ -378,6 +378,12 @@ export interface MarkupOptions {
   ignoreComments: boolean;
   normalizeWhitespace: boolean;
   sortAttributes: boolean;
+  /**
+   * Replace each side's own address with the same token before comparing, so
+   * the two systems' hosts are not a difference on every link on the page.
+   * A link from one side to the other's host still is one.
+   */
+  ignoreBaseUrl: boolean;
   /** Mark a comparison as failed when the markup differs at all. */
   failOnDifference: boolean;
   /** Cap on hunks embedded into the report; the full patch is always written. */

@@ -10,6 +10,7 @@ const OPTIONS: MarkupOptions = {
   ignoreComments: false,
   normalizeWhitespace: true,
   sortAttributes: false,
+  ignoreBaseUrl: true,
   failOnDifference: false,
   maxHunksInReport: 200,
 };
@@ -183,5 +184,70 @@ describe('what gets written to disk', () => {
     assert.equal(diff.result.identical, true);
     assert.match(diff.normalisedA, /v=1/);
     assert.match(diff.normalisedB, /v=2/);
+  });
+});
+
+/**
+ * The two systems sit on two hosts, by definition.
+ *
+ * Every absolute address the page writes then differs, which on a large site
+ * is hundreds of changed lines per comparison saying the same thing, and they
+ * bury whatever else the page did.
+ */
+describe('the two systems own addresses', () => {
+  const sides = { a: 'https://live.example.com/de/veranstaltung', b: 'https://staging.test:8443/de/veranstaltung' };
+
+  const pageOn = (host: string): string =>
+    `<html><head><link rel="canonical" href="${host}/de/veranstaltung">` +
+    `</head><body><a href="${host}/de/tickets">Tickets</a>` +
+    `<img src="${host}/fileadmin/hero.jpg" srcset="${host}/fileadmin/hero.jpg 1x"></body></html>`;
+
+  it('is not a difference on every link of the page', () => {
+    const diff = diffMarkup(pageOn('https://live.example.com'), pageOn('https://staging.test:8443'), options(), sides);
+
+    assert.equal(diff.result.identical, true, 'the same page on two hosts is the same page');
+  });
+
+  it('still reports one side pointing at the other', () => {
+    // The single case worth catching in all of that: a staging page that links
+    // back to production.
+    const leaking =
+      '<html><head><link rel="canonical" href="https://staging.test:8443/de/veranstaltung">' +
+      '</head><body><a href="https://live.example.com/de/tickets">Tickets</a>' +
+      '<img src="https://staging.test:8443/fileadmin/hero.jpg" srcset="https://staging.test:8443/fileadmin/hero.jpg 1x"></body></html>';
+
+    const diff = diffMarkup(pageOn('https://live.example.com'), leaking, options(), sides);
+
+    assert.equal(diff.result.identical, false);
+    assert.match(diff.patch, /live\.example\.com\/de\/tickets/, 'and says which address it is');
+  });
+
+  it('keeps the addresses as served in what it writes to disk', () => {
+    const diff = diffMarkup(pageOn('https://live.example.com'), pageOn('https://staging.test:8443'), options(), sides);
+
+    assert.match(diff.normalisedA, /https:\/\/live\.example\.com\/de\/tickets/);
+    assert.match(diff.normalisedB, /https:\/\/staging\.test:8443\/de\/tickets/);
+  });
+
+  it('leaves them alone when the run says to', () => {
+    const diff = diffMarkup(
+      pageOn('https://live.example.com'),
+      pageOn('https://staging.test:8443'),
+      options({ ignoreBaseUrl: false }),
+      sides
+    );
+
+    assert.equal(diff.result.identical, false, 'every absolute address differs, and is reported');
+  });
+
+  it('leaves a host that merely starts the same alone', () => {
+    const diff = diffMarkup(
+      '<a href="https://live.example.com.evil.test/x">x</a>',
+      '<a href="https://staging.test:8443.evil.test/x">x</a>',
+      options(),
+      sides
+    );
+
+    assert.equal(diff.result.identical, false, 'a different host is a different host');
   });
 });

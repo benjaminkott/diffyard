@@ -27,15 +27,49 @@ const CONTEXT_LINES = 3;
  * That turns the comparison into a readable, structural diff instead of one
  * giant changed line.
  */
-export function diffMarkup(htmlA: string, htmlB: string, options: MarkupOptions): MarkupDiff {
-  const comparedA = normalise(htmlA, options);
-  const comparedB = normalise(htmlB, options);
+/** The addresses the two sides were asked for, for `ignoreBaseUrl`. */
+export interface Sides {
+  a: string;
+  b: string;
+}
+
+/**
+ * What each side's own address is replaced with while the two are compared.
+ *
+ * Visible on purpose: a reader looking at a hunk should see that the base was
+ * taken out rather than wonder why two addresses look identical.
+ */
+export const BASE = '{base}';
+
+export function diffMarkup(
+  htmlA: string,
+  htmlB: string,
+  options: MarkupOptions,
+  sides?: Sides
+): MarkupDiff {
+  // The two systems differ in host by definition, so every absolute address on
+  // the page differs -- on a large site that is hundreds of changed lines per
+  // comparison, all of them saying the same thing, and they bury whatever else
+  // the page did. Each side's own host becomes the same token, which leaves
+  // exactly one case still showing: an address on one side pointing at the
+  // other's host, which is a real finding and stays one.
+  const withoutBase = (html: string, side: 'a' | 'b'): string =>
+    options.ignoreBaseUrl && sides ? stripBase(html, sides[side]) : html;
+
+  const comparedA = withoutBase(normalise(htmlA, options), 'a');
+  const comparedB = withoutBase(normalise(htmlB, options), 'b');
 
   // What gets written to disk keeps everything; only the comparison applies
   // the ignore rules. An attribute ignored because build hashes churn is still
   // the thing you need when you go and check which image was actually used.
   const keepAll: MarkupOptions = { ...options, ignoreAttributes: [], ignoreSelectors: [] };
-  const sameRules = options.ignoreAttributes.length === 0 && options.ignoreSelectors.length === 0;
+  // The written copies keep the addresses as they were served, for the same
+  // reason they keep every attribute: what is compared and what is recorded
+  // are two different questions.
+  const sameRules =
+    options.ignoreAttributes.length === 0 &&
+    options.ignoreSelectors.length === 0 &&
+    !(options.ignoreBaseUrl && sides);
   const normalisedA = sameRules ? comparedA : normalise(htmlA, keepAll);
   const normalisedB = sameRules ? comparedB : normalise(htmlB, keepAll);
 
@@ -68,6 +102,27 @@ export function diffMarkup(htmlA: string, htmlB: string, options: MarkupOptions)
     normalisedA,
     normalisedB,
   };
+}
+
+/**
+ * That side's own host, wherever it appears, as one token.
+ *
+ * Matched with or without the scheme, since a page may write either, and only
+ * where the host ends -- so a host that is a prefix of another one is left
+ * alone.
+ */
+export function stripBase(html: string, base: string): string {
+  let host: string;
+  try {
+    host = new URL(base).host;
+  } catch {
+    return html;
+  }
+
+  if (host === '') return html;
+
+  const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return html.replace(new RegExp(`(?:https?:)?//${escaped}(?=[/"'\\s>?#]|$)`, 'gi'), BASE);
 }
 
 function toLines(normalised: string): string[] {

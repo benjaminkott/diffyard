@@ -684,6 +684,7 @@ function parseMarkup(value: unknown): MarkupOptions {
     ignoreComments: bool(raw['ignoreComments'], false, 'markup.ignoreComments'),
     normalizeWhitespace: bool(raw['normalizeWhitespace'], true, 'markup.normalizeWhitespace'),
     sortAttributes: bool(raw['sortAttributes'], false, 'markup.sortAttributes'),
+    ignoreBaseUrl: bool(raw['ignoreBaseUrl'], true, 'markup.ignoreBaseUrl'),
     failOnDifference: bool(raw['failOnDifference'], false, 'markup.failOnDifference'),
     maxHunksInReport: num(raw['maxHunksInReport'], 200, 'markup.maxHunksInReport'),
   };

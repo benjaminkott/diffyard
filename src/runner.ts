@@ -749,7 +749,10 @@ async function compare(
       let hunks: Comparison['markupHunks'] = null;
 
       if (config.markup.enabled && shotA.html !== null && shotB.html !== null) {
-        const markupDiff = diffMarkup(shotA.html, shotB.html, config.markup);
+        const markupDiff = diffMarkup(shotA.html, shotB.html, config.markup, {
+          a: shotA.url,
+          b: shotB.url,
+        });
         markup = markupDiff.result;
         hunks = markupDiff.hunks.slice(0, config.markup.maxHunksInReport);
 

@@ -126,6 +126,7 @@ const RESULT: RunResult = {
   skipped: 0,
   outDir: '',
   runId: 'test-run',
+  command: 'diffyard run diffyard.yaml --into test-run',
   reuse: null,
   comparisons: [
     comparison(),
@@ -323,6 +324,18 @@ for (const scheme of ['light', 'dark'] as const) {
       assert.match(text, /desktop 800×600/, 'the viewport it was captured at');
       assert.match(text, /accept consent/, 'what ran before every page');
       assert.match(text, /x-preview-token/, 'that a header was set, by name');
+      await page.close();
+    });
+
+    it('says how to run the whole thing again, not just one finding', async () => {
+      const { page } = await open(scheme);
+
+      // The move from the overview is "fix the deployment, look at all of it
+      // again". A report that only says how to redo one case leaves that one
+      // to be worked out by hand.
+      const line = page.locator('#run-command code');
+      assert.equal(await line.count(), 1, 'the run has its own line, once');
+      assert.equal(await line.textContent(), 'diffyard run diffyard.yaml --into test-run');
       await page.close();
     });
 

@@ -81,6 +81,7 @@ export async function renderReport(
       One tile per scenario. The picture is the pixel diff — red is what
       changed — and the bars are how much, per viewport. Select one to open it.
     </p>
+    <div id="run-command"></div>
   </div>
   <div class="tiles" id="tiles"></div>
 
@@ -965,6 +966,10 @@ figcaption a:hover { text-decoration: underline; }
   border-radius: var(--r-sm);
   background: var(--raised);
 }
+.rerun__label {
+  flex: none; color: var(--subtle); font-size: var(--t-xs);
+  text-transform: uppercase; letter-spacing: .04em;
+}
 .rerun code {
   flex: 1;
   overflow-x: auto;
@@ -1146,7 +1151,7 @@ const SCRIPT = `
 
     body.append(view(comparison, state.mode));
     body.append(stats(comparison));
-    if (comparison.command) body.append(rerun(comparison));
+    if (comparison.command) body.append(rerun(comparison.command));
     return article;
   }
 
@@ -1157,19 +1162,26 @@ const SCRIPT = `
    * again; without this that is either a full run or working the flags out by
    * hand, once per finding.
    */
-  function rerun(comparison) {
+  function rerun(command, label) {
     const container = document.createElement('div');
     container.className = 'rerun';
 
+    if (label) {
+      const what = document.createElement('span');
+      what.className = 'rerun__label';
+      what.textContent = label;
+      container.append(what);
+    }
+
     const line = document.createElement('code');
-    line.textContent = comparison.command;
+    line.textContent = command;
 
     const copy = document.createElement('button');
     copy.type = 'button';
     copy.textContent = 'Copy';
     copy.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(comparison.command);
+        await navigator.clipboard.writeText(command);
         copy.textContent = 'Copied';
       } catch {
         // A report opened from a file:// URL has no clipboard permission, so
@@ -2371,6 +2383,15 @@ const SCRIPT = `
     panel.open = true;
     panel.scrollIntoView({ block: 'start' });
   });
+
+  /**
+   * The whole run again, said where the run is described rather than inside a
+   * finding: from the overview the question is "look at all of this again",
+   * and a per-case line is the wrong answer to it.
+   */
+  if (result.command) {
+    document.getElementById('run-command').append(rerun(result.command, 'Run it all again'));
+  }
 
   buildSettings();
   buildOverview();

@@ -144,6 +144,7 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
 
   return {
     commonMarkup: common,
+    command: runCommandFor(config, runId),
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
@@ -402,7 +403,21 @@ function runName(config: Config, date: Date): string {
  * run that captured both keeps capturing both.
  */
 function commandFor(config: Config, runId: string, id: string): string {
-  const parts = ['diffyard run', quote(config.file), `--case ${id}`, `--into ${runId}`];
+  return runCommandFor(config, runId, `--case ${id}`);
+}
+
+/**
+ * The same line for the whole run rather than one finding.
+ *
+ * A report that says how to redo one case but not all of them makes the common
+ * move -- fix the deployment, look again at everything -- the one you have to
+ * work out by hand. It carries no `--case`, so it is the run this report is,
+ * repeated into this report.
+ */
+export function runCommandFor(config: Config, runId: string, only?: string): string {
+  const parts = ['diffyard run', quote(config.file)];
+  if (only) parts.push(only);
+  parts.push(`--into ${runId}`);
 
   if (config.reuse.sides.length > 0) {
     parts.push(`--reuse ${config.reuse.sides.join(',')}`, `--reuse-from ${runId}`);

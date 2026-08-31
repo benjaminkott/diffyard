@@ -411,6 +411,16 @@ substring over names. `--into` writes the result back into that report,
 replacing its entry and leaving the other findings standing. So the cycle is:
 fix one thing, paste the line, reload the report.
 
+The overview carries the same line for the whole run, without the `--case`:
+
+```
+diffyard run diffyard.yaml --into 2026-08-28_09-16-03-24f7ce
+```
+
+That is the other move — fix the deployment rather than one page, then look at
+all of it again — and it writes back into the same report, so the findings keep
+their place instead of appearing as a new run.
+
 The report stays honest about having been assembled over time: every card says
 when its own picture was taken, and anything newer than the run reads
 *Refreshed* — see [What a card says](docs/the-report.md#what-a-card-says).

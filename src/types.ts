@@ -555,6 +555,15 @@ export interface RunResult {
    */
   commonMarkup: string[];
   /**
+   * What to run to do this whole run again, into this same report.
+   *
+   * The per-comparison `command` refreshes one finding; this refreshes all of
+   * them. Both are here for the same reason: the flags that matter are the
+   * ones nobody would reconstruct by hand -- where the config file was, which
+   * report to write back into, and which side came from an earlier run.
+   */
+  command: string;
+  /**
    * Set when a side was taken from an earlier run, so a reader of the numbers
    * can tell whether they were measured against a fresh reference.
    */

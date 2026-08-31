@@ -128,7 +128,7 @@ const RESULT: RunResult = {
   skipped: 0,
   outDir: '',
   runId: 'test-run',
-  command: 'diffyard run diffyard.yaml --into test-run',
+  command: 'diffyard run diffyard.yaml',
   reuse: null,
   comparisons: [
     comparison(),
@@ -350,6 +350,24 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.close();
     });
 
+    it('keeps the bar the same height when a comparison is opened', async () => {
+      const { page } = await open(scheme);
+
+      // The two bars are one bar to a reader: same edge, one replacing the
+      // other. Different contents used to make them differ by three pixels,
+      // and the page nudged each way through.
+      const height = (selector: string) =>
+        page.locator(selector).first().evaluate((node) => Math.round(node.getBoundingClientRect().height));
+
+      const overview = await height('.controls');
+      await page.locator('.tile').first().click();
+      await page.waitForTimeout(150);
+      const detail = await height('.detail__bar');
+
+      assert.equal(detail, overview, 'the bar does not move when the view behind it changes');
+      await page.close();
+    });
+
     it('says how to run the whole thing again, not just one finding', async () => {
       const { page } = await open(scheme);
 
@@ -358,7 +376,8 @@ for (const scheme of ['light', 'dark'] as const) {
       // to be worked out by hand.
       const line = page.locator('#run-command code');
       assert.equal(await line.count(), 1, 'the run has its own line, once');
-      assert.equal(await line.textContent(), 'diffyard run diffyard.yaml --into test-run');
+      assert.equal(await line.textContent(), 'diffyard run diffyard.yaml',
+        'no --into: repeating a run is running it, and the config says where it lands');
       await page.close();
     });
 

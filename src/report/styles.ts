@@ -171,6 +171,15 @@ code { font-family: var(--mono); font-size: var(--t-sm); }
 .count--failed { border-color: color-mix(in srgb, var(--fail) 35%, var(--border)); }
 
 /* --------------------------------------------------------------- controls */
+/* The overview's bar and the detail's are one bar to a reader: they sit on the
+   same edge and replace each other. Their contents differ -- a row of pills
+   against a title over its two URLs -- so the swap nudged the page three
+   pixels each way. Both reserve the taller one.
+
+   This is the row's height, not the bar's: the report has no border-box
+   reset, so the padding and the rule under it come on top. */
+.controls, .detail__bar { min-height: 39px; }
+
 .controls {
   position: sticky; top: 0; z-index: 5;
   display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); align-items: center;
@@ -220,6 +229,11 @@ select:hover, input[type=search]:hover { border-color: var(--border-strong); }
   display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-2) var(--s-3);
   margin-bottom: var(--s-3);
 }
+/* Its own row. Beside the hint it was a box being baseline-aligned against a
+   paragraph -- sitting high, growing the head by half at some widths and not
+   others. Below it, the head is the same height whatever the window does. */
+#run-command { flex-basis: 100%; }
+#run-command .rerun { margin-top: var(--s-1); }
 .overview__head h2 { margin: 0; font-size: var(--t-lg); font-weight: 620; letter-spacing: -.01em; }
 .overview__hint { margin: 0; color: var(--muted); font-size: var(--t-sm); }
 

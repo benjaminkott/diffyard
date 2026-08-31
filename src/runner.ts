@@ -409,7 +409,10 @@ function runName(config: Config, date: Date): string {
  * run that captured both keeps capturing both.
  */
 function commandFor(config: Config, runId: string, id: string): string {
-  return runCommandFor(config, runId, `--case ${id}`);
+  // One finding goes back into the report it came from, which is what --into
+  // names: without it the case would land in a folder of its own, the only
+  // comparison in a report.
+  return line(config, runId, [`--case ${id}`, `--into ${runId}`]);
 }
 
 /**
@@ -417,13 +420,22 @@ function commandFor(config: Config, runId: string, id: string): string {
  *
  * A report that says how to redo one case but not all of them makes the common
  * move -- fix the deployment, look again at everything -- the one you have to
- * work out by hand. It carries no `--case`, so it is the run this report is,
- * repeated into this report.
+ * work out by hand.
+ *
+ * It carries no --into. Repeating a run is running it: where the results land
+ * is the config's business, and a suite that fixes `output.runId` has already
+ * said. One that does not gets a new folder, which is what a fresh run is.
  */
-export function runCommandFor(config: Config, runId: string, only?: string): string {
-  const parts = ['diffyard run', quote(config.file)];
-  if (only) parts.push(only);
-  parts.push(`--into ${runId}`);
+export function runCommandFor(config: Config, runId: string): string {
+  return line(config, runId, []);
+}
+
+/**
+ * It mirrors the run it came from rather than improving on it: a run that
+ * reused a side says so, pointing at this run's own copy of that side.
+ */
+function line(config: Config, runId: string, flags: string[]): string {
+  const parts = ['diffyard run', quote(config.file), ...flags];
 
   if (config.reuse.sides.length > 0) {
     parts.push(`--reuse ${config.reuse.sides.join(',')}`, `--reuse-from ${runId}`);

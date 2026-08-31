@@ -143,6 +143,17 @@ code { font-family: var(--mono); font-size: var(--t-sm); }
 .topbar .meta { margin: var(--s-2) 0 0; color: var(--subtle); font-size: var(--t-xs); }
 /* Its own row. Inside the title column it was a sentence of provenance being
    wrapped to half the width while the space beside it stood empty. */
+.topbar .running {
+  flex-basis: 100%;
+  margin: var(--s-1) 0 0;
+  padding: var(--s-1) var(--s-3);
+  align-self: flex-start;
+  display: inline-block;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-size: var(--t-xs);
+}
 .topbar .reused {
   flex-basis: 100%;
   margin: var(--s-1) 0 0;

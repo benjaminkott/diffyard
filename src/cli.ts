@@ -223,6 +223,8 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
    */
   const stopping = new AbortController();
   let asked = false;
+  /** Chunks already on disk, so a snapshot writes only what is new. */
+  const laid = new Set<string>();
 
   const interrupt = () => {
     if (asked) {
@@ -247,6 +249,30 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
   try {
     result = await run(config, {
       signal: stopping.signal,
+      /**
+       * The report, while the run is still filling it in.
+       *
+       * The page is written once and never changes; what grows is the data
+       * beside it. So a snapshot is the shell plus whatever the pool holds so
+       * far, and pressing refresh is all it takes to see where the run has
+       * got to.
+       */
+      onSnapshot: async (snapshot) => {
+        const report = await renderReport(snapshot, config, { selfContained: false });
+        await mkdir(snapshot.outDir, { recursive: true });
+        await writeFile(join(snapshot.outDir, 'index.html'), report.html);
+
+        // The index every time, because that is what grew. A comparison's own
+        // chunk only once: it is written when the comparison lands and does
+        // not change after, and there are nine hundred of them.
+        for (const [name, body] of report.files) {
+          if (name !== INDEX_FILE && laid.has(name)) continue;
+          const path = join(snapshot.outDir, name);
+          await mkdir(dirname(path), { recursive: true });
+          await writeFile(path, body);
+          laid.add(name);
+        }
+      },
       onStart: (total, info) => {
         const facts = [
           `${total} comparison${total === 1 ? '' : 's'}`,

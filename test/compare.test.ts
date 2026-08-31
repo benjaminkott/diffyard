@@ -122,6 +122,54 @@ function find(result: RunResult, scenario: string) {
  * report -- what it got through, and a named entry for everything it did not,
  * which is what `--unfinished` reads to carry on.
  */
+/**
+ * The report, while the run is still filling it in.
+ *
+ * The page is written once and never changes; what grows is the data beside
+ * it. So it can be opened as soon as the run starts, and refreshed to see
+ * where it has got to.
+ */
+describe('a run in progress', { concurrency: false }, () => {
+  it('lays the page out before it has captured anything', async () => {
+    const seen: { done: number; total: number }[] = [];
+
+    const dir = join(workDir, `run-${counter++}`);
+    const file = join(dir, 'diffyard.yaml');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      file,
+      `
+compare:
+  a: ${siteA.url}
+  b: ${siteB.url}
+output:
+  dir: ${join(dir, 'out')}
+browser:
+  viewports:
+    desktop: { width: 500, height: 400 }
+markup:
+  enabled: false
+scenarios:
+  - /identical
+  - /changed
+  - /moved
+`
+    );
+
+    const result = await run(loadConfig(file), {
+      onSnapshot: (snapshot) => {
+        seen.push({ done: snapshot.comparisons.length, total: snapshot.total });
+      },
+    });
+
+    assert.ok(seen.length > 0, 'the report is written before the run ends');
+    assert.equal(seen[0]?.done, 0, 'the first one has nothing in it yet');
+    assert.equal(seen[0]?.total, 3, 'but knows how many there will be');
+    assert.equal(result.comparisons.length, 3, 'and the run itself still finishes');
+  });
+});
+
 describe('a run that is stopped', { concurrency: false }, () => {
   it('still writes a report, with the ones it never reached named', async () => {
     const stopping = new AbortController();

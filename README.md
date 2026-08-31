@@ -157,6 +157,11 @@ nothing did. Under `output.images: png` it is a palette PNG instead — the
 picture holds under two hundred colours by construction, so one byte a pixel
 says what three did.
 
+Because the page is a shell and the data lives beside it, the report exists
+before the run has captured anything: open it as the run starts, and press
+refresh to see how far it has got. It says so at the top while it is still
+being filled in.
+
 `index.html` is a shell: the run itself lives in `data/`, which is why the
 report opens on a run of nine hundred pages instead of parsing a hundred and
 forty megabytes of markup diff to draw an overview that shows none of it. The

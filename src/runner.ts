@@ -26,6 +26,17 @@ import type {
 
 export type Phase = 'capture' | 'compare';
 
+/**
+ * How often the report beside a running run is brought up to date.
+ *
+ * Rendering the index costs about twenty milliseconds on nine hundred
+ * comparisons, so the cost is not the rendering: it is writing a file that
+ * grows to a couple of megabytes, again and again. Five seconds is often
+ * enough that a refresh feels current, and rare enough that a twenty-minute
+ * run does not spend a gigabyte saying so.
+ */
+const SNAPSHOT_EVERY = 5000;
+
 export interface RunEvents {
   onStart?: (total: number, run: { runId: string; outDir: string; reuse: ReuseSource | null }) => void;
   /** Fires whenever the runner moves to a new step of a comparison. */
@@ -36,6 +47,15 @@ export interface RunEvents {
    */
   onProgress?: (state: { id: string; index: number; total: number; label: string; phase: Phase }) => void;
   onComparisonDone?: (comparison: Comparison, index: number, total: number) => void;
+  /**
+   * The run so far, as often as there is something new to say.
+   *
+   * Fires once before anything is captured -- so the report exists and can be
+   * opened straight away -- and then as comparisons land, throttled. What the
+   * caller does with it is write it out; what makes that cheap is that the
+   * page itself never changes, only the data beside it.
+   */
+  onSnapshot?: (result: RunResult) => void | Promise<void>;
   /**
    * Asked to stop, usually by a Ctrl+C.
    *
@@ -89,6 +109,35 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
      * itself. Results are written to their own slot, which keeps the report in
      * config order however they finish.
      */
+    /**
+     * At most one write in flight, and never more than one every few seconds.
+     *
+     * Rendering the whole index costs about twenty milliseconds on nine
+     * hundred comparisons, so the cost is not the rendering -- it is writing
+     * a file that grows to a couple of megabytes, over and over.
+     */
+    let snapshotAt = 0;
+    let writing: Promise<void> | null = null;
+
+    const snapshot = async (force = false): Promise<void> => {
+      if (!events.onSnapshot || writing) return;
+      if (!force && Date.now() - snapshotAt < SNAPSHOT_EVERY) return;
+
+      snapshotAt = Date.now();
+      const done = comparisons.filter(Boolean);
+      writing = Promise.resolve(
+        events.onSnapshot(resultOf(config, runId, outDir, startedAt, done, jobs.length, [], store))
+      )
+        .catch(() => undefined)
+        .finally(() => {
+          writing = null;
+        });
+      await writing;
+    };
+
+    // Before anything is captured, so there is a page to open at once.
+    await snapshot(true);
+
     const worker = async (): Promise<void> => {
       for (;;) {
         if (events.signal?.aborted) return;
@@ -130,6 +179,7 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
         comparisons[index] = comparison;
         finished += 1;
         events.onComparisonDone?.(comparison, finished - 1, jobs.length);
+        void snapshot();
       }
     };
 
@@ -164,15 +214,36 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
       )
   );
 
-  const finishedAt = new Date();
+  return resultOf(config, runId, outDir, startedAt, comparisons, comparisons.length, common, store);
+}
+
+/**
+ * The run so far, in the shape a finished one has.
+ *
+ * Called once at the end, and repeatedly while the run is going so the report
+ * beside it can be opened and refreshed. `total` is what the run set out to
+ * do; `comparisons` is what it has. A report where the second is shorter than
+ * the first is one still being written.
+ */
+function resultOf(
+  config: Config,
+  runId: string,
+  outDir: string,
+  startedAt: Date,
+  comparisons: Comparison[],
+  total: number,
+  common: string[],
+  store: ReuseStore | null
+): RunResult {
+  const now = new Date();
 
   return {
     commonMarkup: common,
     commands: runCommandsFor(config, runId, comparisons),
     startedAt: startedAt.toISOString(),
-    finishedAt: finishedAt.toISOString(),
-    durationMs: finishedAt.getTime() - startedAt.getTime(),
-    total: comparisons.length,
+    finishedAt: now.toISOString(),
+    durationMs: now.getTime() - startedAt.getTime(),
+    total,
     passed: comparisons.filter((entry) => entry.status === 'pass').length,
     failed: comparisons.filter((entry) => entry.status === 'fail').length,
     errored: comparisons.filter((entry) => entry.status === 'error' || entry.status === 'timeout').length,

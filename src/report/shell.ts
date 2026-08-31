@@ -44,6 +44,7 @@ export function shell(result: RunResult, config: Config, data: string): string {
     <p class="meta">${escapeHtml(formatMeta(result))}
       <button type="button" class="meta__link" id="open-settings">Settings</button>
     </p>
+    ${running(result)}
   </div>
   <div class="totals">
     ${totalTile('failed', result.failed)}
@@ -299,6 +300,24 @@ function kindFilters(result: RunResult): string {
     '<option value="any">Any kind</option>' +
     options +
     '</select></label>'
+  );
+}
+
+/**
+ * Said while the run is still filling this in.
+ *
+ * A report written mid-run holds what has finished; `total` is what the run
+ * set out to do. Without this the page looks like a finished run that found
+ * two hundred pages, which is a different and wrong thing.
+ */
+function running(result: RunResult): string {
+  const done = result.comparisons.length;
+  if (done >= result.total) return '';
+
+  return (
+    '<p class="running">' +
+    escapeHtml(`Still running — ${done} of ${result.total} so far. Refresh to see more.`) +
+    '</p>'
   );
 }
 

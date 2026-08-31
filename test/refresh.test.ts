@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -146,6 +146,27 @@ describe('the command a result carries', () => {
       kinds,
       'so it is still filed under the same kinds'
     );
+  });
+
+  it('clears what the report no longer refers to', async () => {
+    const { dir, config, out } = project();
+    await diffyard(dir, [config]);
+    const runId = latest(out);
+    const shots = join(out, runId, 'shots');
+
+    // What a picture stored under a name the run no longer writes looks like:
+    // a run folder is written into again, and until every file kept the same
+    // name each write landed on its predecessor.
+    const orphan = join(shots, 'about--desktop.a.png');
+    writeFileSync(orphan, 'a picture from a run that stored them differently');
+    assert.ok(existsSync(orphan));
+
+    await diffyard(dir, [config, '--case', 'about--desktop', '--into', runId]);
+
+    assert.ok(!existsSync(orphan), 'the file no comparison names is gone');
+    const kept = results(out, runId).comparisons.find((entry) => entry.scenario === 'index');
+    assert.ok(kept?.files.a && existsSync(join(out, runId, kept.files.a)),
+      'and a comparison this run did not touch keeps its own');
   });
 
   it('says in the report that part of it is newer than the run', async () => {

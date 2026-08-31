@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { BrowserError } from './capture.js';
@@ -9,7 +9,7 @@ import { explorePage, renderExploration } from './explore.js';
 import { EXAMPLE_CONFIG } from './example.js';
 import { Progress } from './progress.js';
 import { renderReport } from './report/index.js';
-import { POOL_DIR, forDelivery, readCase, withDetail } from './report/pool.js';
+import { INDEX_FILE, POOL_DIR, caseFile, forDelivery, readCase, withDetail } from './report/pool.js';
 import type { CaseDetail } from './report/pool.js';
 import { SCHEMA_FILENAME, schemaJson } from './schema.js';
 import { run } from './runner.js';
@@ -330,6 +330,50 @@ async function mergeInto(result: RunResult): Promise<RunResult> {
 }
 
 /**
+ * Clears what the report no longer refers to.
+ *
+ * A run folder is written into again -- a fixed `output.runId`, or `--into` --
+ * and until every file kept the same name that took care of itself: each write
+ * landed on its predecessor. It stopped being true when a comparison could be
+ * stored as `.a.webp` where it used to be `.a.png`, and the old picture simply
+ * stayed, a stale copy of a page nothing points at.
+ *
+ * The rule is the report's own: every comparison names its files, so a file
+ * under shots/ or data/ that no comparison names is not part of this report.
+ * That covers a picture whose format changed, a scenario dropped from the
+ * config, and a comparison that errored where it used to succeed -- all of
+ * which would otherwise sit there looking current.
+ *
+ * A merge keeps the entries it did not re-run, so their files are named and
+ * stay; nothing here needs to know whether the run was a full one.
+ */
+async function pruneStale(runDir: string, result: RunResult): Promise<void> {
+  const named = new Set<string>([INDEX_FILE]);
+  for (const comparison of result.comparisons) {
+    for (const file of Object.values(comparison.files)) if (file) named.add(file);
+    // The pool writes one of these per comparison whatever the comparison's
+    // own record says; one read back from an older report says nothing.
+    named.add(caseFile(comparison.id));
+  }
+
+  for (const dir of ['shots', POOL_DIR]) {
+    let entries: string[];
+    try {
+      entries = await readdir(join(runDir, dir));
+    } catch {
+      continue;
+    }
+
+    await Promise.all(
+      entries
+        .map((name) => `${dir}/${name}`)
+        .filter((name) => !named.has(name))
+        .map((name) => rm(join(runDir, name), { force: true, recursive: true }))
+    );
+  }
+}
+
+/**
  * Writes the artifact: a self-contained directory plus, unless disabled, a
  * single archive the caller can store.
  */
@@ -365,6 +409,9 @@ async function writeArtifact(result: RunResult, config: Config, values: Values):
     await writeFile(bundlePath, (await renderReport(result, config, { selfContained: true })).html);
     written.push(['Single file', bundlePath]);
   }
+
+  // Last, so a run that fails halfway has not cleared what it cannot replace.
+  await pruneStale(runDir, result);
 
   if (typeof values.junit === 'string') {
     const junitPath = resolve(values.junit);

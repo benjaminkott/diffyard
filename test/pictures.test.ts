@@ -273,6 +273,38 @@ scenarios:
     assert.ok(comparison.kinds.includes('resized'), 'and filed as its own finding');
   });
 
+  it('does not draw a line across the page for the row that costs', async () => {
+    // The taller side has one row inside that picture the other has not. It is
+    // the same picture at another size -- said as that -- and a red line
+    // across the page for a row nobody can see is worse than saying nothing.
+    const file = join(workDir, 'rounded-2.yaml');
+    writeFileSync(
+      file,
+      `
+compare:
+  a: ${siteA.url}
+  b: ${siteB.url}
+output:
+  dir: ${join(workDir, 'out-rounded-2')}
+browser:
+  viewports:
+    desktop: { width: 600, height: 400 }
+markup:
+  enabled: false
+scenarios:
+  - /rounded
+`
+    );
+
+    const comparison = (await run(loadConfig(file))).comparisons[0];
+
+    assert.ok(comparison);
+    assert.equal(comparison.diff?.aligned?.removedRows ?? 0, 0, 'the row is not counted');
+    assert.equal(comparison.diff?.diffPixels, 0, 'and nothing is left to report');
+    assert.equal(comparison.status, 'pass');
+    assert.ok(comparison.kinds.includes('resized'), 'the picture still says it is another size');
+  });
+
   it('passes, says why, and keeps the rectangles for the next run', async () => {
     const file = join(workDir, 'diffyard.yaml');
     writeFileSync(

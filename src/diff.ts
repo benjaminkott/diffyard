@@ -3,8 +3,8 @@ import { PNG } from 'pngjs';
 import { align } from './align.js';
 import type { Edit, RowSignatures } from './align.js';
 import { isMarked } from './marks.js';
-import { rowsInOrder, setAsidePictures, setAsideQuiet, shared } from './pictures.js';
-import type { Rows } from './pictures.js';
+import { explainedByAPicture, rowsInOrder, setAsidePictures, setAsideQuiet, shared } from './pictures.js';
+import type { Rect, Rows } from './pictures.js';
 import type { DiffRegion, DiffResult, Picture } from './types.js';
 
 export interface DiffOptions {
@@ -92,7 +92,11 @@ export function diffImages(bufferA: Source, bufferB: Source, options: DiffOption
     sizeB: { width: b.width, height: b.height },
   };
 
-  const positional = comparePositionally(a, b, options);
+  // Worked out once: both comparisons ask the same question of the same
+  // rectangles, and matching them is a walk over two lists per picture.
+  const rects = options.pictures ? shared(options.pictures.a, options.pictures.b) : [];
+
+  const positional = comparePositionally(a, b, options, rects);
 
   if (!options.alignRows || a.width !== b.width) {
     // Alignment works row by row; two pages of different width have nothing to
@@ -108,7 +112,7 @@ export function diffImages(bufferA: Source, bufferB: Source, options: DiffOption
     };
   }
 
-  const aligned = compareAligned(a, b, options);
+  const aligned = compareAligned(a, b, options, rects);
 
   if (aligned.stats.ratio >= positional.stats.ratio) {
     // No shift worth taking out. Reporting the alignment anyway would make two
@@ -153,7 +157,12 @@ interface Stats {
 }
 
 /** Pixels compared where they sit, both pages padded to the union size. */
-function comparePositionally(a: PNG, b: PNG, options: DiffOptions): { image: PNG; stats: Stats } {
+function comparePositionally(
+  a: PNG,
+  b: PNG,
+  options: DiffOptions,
+  rects: Rect[]
+): { image: PNG; stats: Stats } {
   const width = Math.max(a.width, b.width);
   const height = Math.max(a.height, b.height);
 
@@ -173,7 +182,7 @@ function comparePositionally(a: PNG, b: PNG, options: DiffOptions): { image: PNG
     }
   );
 
-  const aside = setAside(a, b, image, options, rowsInOrder(height));
+  const aside = setAside(a, b, image, options, rowsInOrder(height), rects);
   return {
     image,
     stats: summarise(image, width, height, diffPixels - aside.pictures - aside.unseen, aside),
@@ -190,7 +199,8 @@ function comparePositionally(a: PNG, b: PNG, options: DiffOptions): { image: PNG
 function compareAligned(
   a: PNG,
   b: PNG,
-  options: DiffOptions
+  options: DiffOptions,
+  rects: Rect[]
 ): { image: PNG; stats: Stats; shift: NonNullable<DiffResult['aligned']> } {
   const width = a.width;
   const edits = align(signatures(a), signatures(b));
@@ -234,9 +244,20 @@ function compareAligned(
       continue;
     }
 
-    // A row one side does not have at all: every pixel of it is a difference.
     const source = edit.type === 'add' ? b : a;
     const at = edit.type === 'add' ? edit.b : edit.a;
+
+    // A row that is only there because one side draws a picture a pixel
+    // shorter is not a difference in the page: it is that picture at another
+    // size, which is reported as exactly that. Drawn as the page around it,
+    // and counted nowhere -- a red line across the page for a row nobody can
+    // see is worse than saying nothing.
+    if (explainedByAPicture(at, rects, edit.type === 'add' ? 'b' : 'a')) {
+      dimRow(source, at, image, index, width);
+      continue;
+    }
+
+    // A row one side does not have at all: every pixel of it is a difference.
     tintRow(source, at, image, index, width, edit.type === 'add' ? ADDED_TINT : REMOVED_TINT);
 
     diffPixels += width;
@@ -246,7 +267,7 @@ function compareAligned(
 
   // After the rows are assembled rather than per row: a picture is a
   // rectangle, and a row on its own cannot see one.
-  const aside = setAside(a, b, image, options, rows);
+  const aside = setAside(a, b, image, options, rows, rects);
 
   return {
     image,
@@ -271,14 +292,15 @@ function setAside(
   b: PNG,
   image: PNG,
   options: DiffOptions,
-  rows: Rows
+  rows: Rows,
+  rects: Rect[]
 ): { pictures: number; unseen: number; resized: number } {
   // Zero tolerance is asked for by someone who wants every difference counted,
   // and setting one aside for being hard to see is the opposite of that.
   if (options.pixelThreshold === 0) return { pictures: 0, unseen: 0, resized: 0 };
 
-  const verdict = options.pictures
-    ? setAsidePictures(a, b, image, shared(options.pictures.a, options.pictures.b), rows)
+  const verdict = rects.length > 0
+    ? setAsidePictures(a, b, image, rects, rows)
     : { pixels: 0, resized: 0 };
 
   return {
@@ -345,6 +367,23 @@ function signatures(image: PNG): RowSignatures {
 function copyRow(source: PNG, y: number, target: PNG): void {
   const from = (source.width * y) << 2;
   source.data.copy(target.data, 0, from, from + (source.width << 2));
+}
+
+/** Draws a row as an unchanged one: dimmed, and nothing laid over it. */
+function dimRow(source: PNG, y: number, target: PNG, targetY: number, width: number): void {
+  for (let x = 0; x < width; x += 1) {
+    const from = (source.width * y + x) << 2;
+    const to = (width * targetY + x) << 2;
+
+    const grey =
+      source.data[from]! * 0.3 + source.data[from + 1]! * 0.59 + source.data[from + 2]! * 0.11;
+    const faded = Math.round(255 - (255 - grey) * 0.25);
+
+    target.data[to] = faded;
+    target.data[to + 1] = faded;
+    target.data[to + 2] = faded;
+    target.data[to + 3] = 255;
+  }
 }
 
 /** Draws a row dimmed and washed with a colour, the way pixelmatch dims. */

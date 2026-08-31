@@ -123,6 +123,13 @@ also excuse an area that grew a shade darker, which is a change somebody made.
 A block that cannot be compared in full — where one page is longer than the
 other — is never set aside.
 
+The taller side then has a row inside that picture the other has not, and that
+row is drawn as the page around it and counted nowhere: it is the same picture
+at another size, which is already reported, and a red line across the page for
+a row nobody can see is worse than saying nothing. Only inside such a
+rectangle, with a row of slack at either end — a row anywhere else is content
+one side does not have, and stays a difference of any size.
+
 A picture both sides place in the same column at the same width and draw at a
 different height is reported as exactly that, whatever the pixels inside it
 say — kind *Picture drawn at another size*, and one line at the end of the run

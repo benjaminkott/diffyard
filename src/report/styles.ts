@@ -546,6 +546,18 @@ figcaption a:hover { text-decoration: underline; }
 .onion__control input { flex: 1; }
 
 /* ------------------------------------------------------------------ stats */
+/* What the colours in the difference picture mean. Under the picture rather
+   than in the caption above it: it is read while looking at the picture. */
+.legend {
+  display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4);
+  margin: var(--s-2) 0 0; color: var(--muted); font-size: var(--t-xs);
+}
+.legend span { display: inline-flex; align-items: center; gap: var(--s-2); }
+.legend__swatch {
+  width: 10px; height: 10px; border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+}
+
 .stats {
   display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4);
   margin-top: var(--s-2); padding-top: var(--s-2);

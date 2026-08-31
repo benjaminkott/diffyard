@@ -272,13 +272,13 @@ export const SCRIPT = `
       // Nothing differed, so no difference picture was written. Side A greyed
       // is what one would have shown.
       const difference = src(comparison.id, 'diff');
-      return difference
-        ? figure(
-            comparison.diff && (comparison.diff.redelivered || comparison.diff.unseen)
-              ? 'Diff — red marks what changed, blue what was set aside'
-              : 'Diff — red marks what changed',
-            difference, null, profile)
-        : figure('Diff — nothing differs', src(comparison.id, 'a'), null, profile, { flat: true });
+      if (!difference) {
+        return figure('Diff — nothing differs', src(comparison.id, 'a'), null, profile, { flat: true });
+      }
+
+      const box = document.createElement('div');
+      box.append(figure('Diff', difference, null, profile), legend(comparison));
+      return box;
     }
     if (mode === 'slider') return slider(comparison);
     if (mode === 'onion') return onion(comparison);
@@ -292,6 +292,51 @@ export const SCRIPT = `
 
     linkScrolling([...pair.querySelectorAll('.frame')]);
     return pair;
+  }
+
+  /**
+   * What the colours in the difference picture mean.
+   *
+   * There are four of them now, and two are red: what changed, and a row one
+   * side does not have at all. Without this the picture is a puzzle -- a page
+   * whose photographs are each a pixel shorter comes out as a stack of red
+   * lines with blue logos between them, and every one of those marks means
+   * something different.
+   *
+   * Only the ones this comparison can actually contain, so the list is short
+   * enough to read.
+   */
+  function legend(comparison) {
+    const diff = comparison.diff;
+    const entries = [['#ff0000', 'changed']];
+
+    if (diff && (diff.redelivered || diff.unseen)) {
+      entries.push(['#7896dc', diff.redelivered
+        ? 'the same picture, delivered differently'
+        : 'too small to see']);
+    }
+
+    if (diff && diff.aligned && diff.aligned.removedRows > 0) {
+      entries.push(['#be3c3c', 'a row only ' + (result.config.labelA || 'A') + ' has']);
+    }
+
+    if (diff && diff.aligned && diff.aligned.addedRows > 0) {
+      entries.push(['#1ea05a', 'a row only ' + (result.config.labelB || 'B') + ' has']);
+    }
+
+    const list = document.createElement('p');
+    list.className = 'legend';
+
+    for (const [colour, text] of entries) {
+      const item = document.createElement('span');
+      const swatch = document.createElement('span');
+      swatch.className = 'legend__swatch';
+      swatch.style.background = colour;
+      item.append(swatch, document.createTextNode(text));
+      list.append(item);
+    }
+
+    return list;
   }
 
   /**

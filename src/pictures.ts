@@ -404,6 +404,33 @@ function blockDelta(
 }
 
 
+/**
+ * Whether a row one side does not have is explained by a picture it draws at
+ * another height.
+ *
+ * Two systems working a picture's height out from an aspect ratio can disagree
+ * by a pixel, and then the taller side has one row inside that picture the
+ * other has not. It is the same picture at another size -- already reported as
+ * that -- and drawing the row as a difference puts a red line across the page
+ * for something nobody can see.
+ *
+ * Only inside such a rectangle, with a row of slack at either end, because
+ * that is where the row matching puts the seam. A row anywhere else is a row
+ * of content one side does not have, and stays a difference of any size.
+ */
+export function explainedByAPicture(row: number, rects: Rect[], side: 'a' | 'b'): boolean {
+  for (const rect of rects) {
+    // A's rectangle is the taller one where `shorter` is positive, so a row A
+    // has and B has not sits in it; the other way round for B.
+    if (side === 'a' ? rect.shorter <= 0 : rect.shorter >= 0) continue;
+    if (row < rect.y - 1) continue;
+    if (row > rect.y + rect.height + 1) continue;
+    return true;
+  }
+
+  return false;
+}
+
 /** The eight positions a picture may have slid to, none of them far. */
 const AROUND: [number, number][] = [
   [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1],

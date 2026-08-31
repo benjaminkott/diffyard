@@ -18,7 +18,17 @@ import { formatOf, toPixels } from './images.js';
 import type { Pixels } from './images.js';
 import { join } from 'node:path';
 import { resolveUrl } from './config.js';
-import type { Comparison, Config, LogEntry, Picture, RunResult, Scenario, Side, Viewport } from './types.js';
+import type {
+  Answer,
+  Comparison,
+  Config,
+  LogEntry,
+  Picture,
+  RunResult,
+  Scenario,
+  Side,
+  Viewport,
+} from './types.js';
 
 /** Where the reused shots come from, and how old they are. */
 export interface ReuseSource {
@@ -42,6 +52,13 @@ export type ReuseOutcome =
       logs: LogEntry[];
       /** Where this side said its pictures were, empty when it did not say. */
       pictures: Picture[];
+      /**
+       * How this side answered when it was photographed, from the run that
+       * photographed it. Without this a re-scored run loses the one finding
+       * that outranks every pixel: that the two sides were not asked the same
+       * question, or one of them was redirected and the other was not.
+       */
+      answer: Answer | null;
     }
   | { reused: false; reason: ReuseMiss };
 
@@ -205,7 +222,17 @@ export class ReuseStore {
       const html = needs.html && htmlPath ? await readFile(join(this.source.dir, htmlPath), 'utf8') : null;
       const url = side === 'a' ? previous.urlA : previous.urlB;
       const logs = previous.logs ? previous.logs[side] : [];
-      return { reused: true, png, pixels, format, html, url, logs, pictures: await this.picturesOf(previous, side) };
+      return {
+        reused: true,
+        png,
+        pixels,
+        format,
+        html,
+        url,
+        logs,
+        pictures: await this.picturesOf(previous, side),
+        answer: previous.answers ? previous.answers[side] : null,
+      };
     } catch {
       return { reused: false, reason: 'missing' };
     }

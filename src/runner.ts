@@ -632,7 +632,9 @@ async function compare(
         png: outcome.png,
         pixels: outcome.pixels,
         stored: outcome.format,
-        answer: null,
+        // Kept with the earlier run: a re-scored run must not lose the finding
+        // that the two sides were not asked the same question.
+        answer: outcome.answer,
         html: outcome.html,
         // Kept with the earlier run, so a side reused from it is still judged
         // on where its pictures are rather than losing them with the capture.

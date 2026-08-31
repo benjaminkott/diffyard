@@ -72,6 +72,58 @@ scenarios:
   return run(loadConfig(file));
 }
 
+/**
+ * The same, into a directory of the caller's choosing and with the run written
+ * out afterwards -- which is the file a later run reads to know what it may
+ * reuse.
+ */
+async function recorded(path: string, out: string, extra = ''): Promise<RunResult> {
+  const dir = join(workDir, `run-${counter++}`);
+  const file = join(dir, 'diffyard.yaml');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    file,
+    `
+compare:
+  a: ${siteA.url}
+  b: ${siteB.url}
+output:
+  dir: ${out}
+browser:
+  viewports:
+    desktop: { width: 500, height: 400 }
+markup:
+  enabled: false
+scenarios:
+  - ${path}
+${extra}`
+  );
+
+  const result = await run(loadConfig(file));
+  writeFileSync(join(result.outDir, 'results.json'), `${JSON.stringify(result, null, 2)}\n`);
+  return result;
+}
+
+describe('scoring a stored run again', () => {
+  it('keeps what each side answered, which no pixel can say', async () => {
+    // Neither side is photographed, so neither answers anything now. Without
+    // carrying it over, a re-scored run loses the one finding that outranks
+    // every pixel on the page.
+    const out = join(workDir, 'out-reuse-answers');
+    const first = await recorded('/moved', out);
+    assert.ok(first.comparisons[0]?.answers, 'the first run saw the redirect');
+
+    const again = await recorded('/moved', out, 'reuse:\n  side: a,b\n');
+    const comparison = again.comparisons[0];
+
+    assert.ok(comparison?.capture?.a.reusedFrom, 'nothing was captured');
+    assert.ok(comparison.answers, 'and the answers came with the shots');
+    assert.equal(comparison.answers.b.redirected, true);
+    assert.equal(comparison.answers.b.path, '/elsewhere');
+    assert.deepEqual(comparison.kinds, ['answer'], 'so it is still filed as one');
+  });
+});
+
 describe('when the two sides answer differently', () => {
   it('fails on the answer, not on how much a 404 looks like a page', async () => {
     const result = await compare('/gone');

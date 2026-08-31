@@ -166,12 +166,22 @@ code { font-family: var(--mono); font-size: var(--t-sm); }
   font-size: var(--t-xs);
 }
 
-.totals { display: flex; flex-wrap: wrap; gap: var(--s-2); flex: 0 0 auto; }
+/* One strip rather than four boxes.
+   Four counts of one run are one fact in four parts, and four frames around
+   them read as four things that happen to sit next to each other -- with two
+   of them usually zero, which is three quarters of the frames drawn around
+   nothing. So: a single group, hairlines between the parts, and the colour on
+   the numbers where it says something. */
+.totals {
+  display: flex; flex: 0 0 auto; align-items: stretch;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--raised);
+  overflow: hidden;
+}
 .count {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   min-width: 82px; padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-md); border: 1px solid var(--border); background: var(--raised);
 }
+.count + .count { border-left: 1px solid var(--border); }
 .count__value {
   font-size: var(--t-xl); font-weight: 660; line-height: 1.15; font-variant-numeric: tabular-nums;
 }
@@ -182,8 +192,9 @@ code { font-family: var(--mono); font-size: var(--t-sm); }
 .count--failed .count__value { color: var(--fail); }
 .count--passed .count__value { color: var(--pass); }
 .count--errored .count__value { color: var(--error); }
-/* The count that matters is the one that is not zero. */
-.count--failed { border-color: color-mix(in srgb, var(--fail) 35%, var(--border)); }
+/* Nothing to report reports nothing: a zero is a fact about the run, not a
+   finding in it, so it steps back rather than sitting there in full contrast. */
+.count--none .count__value { color: var(--subtle); font-weight: 560; }
 
 /* --------------------------------------------------------------- controls */
 /* The overview's bar and the detail's are one bar to a reader: they sit on the
@@ -356,6 +367,12 @@ select:hover, input[type=search]:hover { border-color: var(--border-strong); }
   border-bottom: 1px solid var(--border);
 }
 .detail__title { margin-right: auto; min-width: 0; }
+/* The address, and the way to the page it names. No frame of its own: the bar
+   it sits in is one row high, and a border would push it a few pixels taller
+   than the one it replaces when a comparison is opened. */
+.opener { margin-right: var(--s-3); color: var(--muted); text-decoration: none; }
+.opener:hover { color: var(--text); text-decoration: underline; }
+.opener__side { margin-right: var(--s-1); color: var(--accent); font-weight: 650; }
 .detail__title h2 { margin: 0; font-size: var(--t-md); font-weight: 620; letter-spacing: -.005em; }
 .detail__group { color: var(--subtle); font-weight: 500; }
 .detail__title p {

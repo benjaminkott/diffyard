@@ -236,7 +236,8 @@ function sides(result: RunResult): string {
 }
 
 function totalTile(kind: string, value: number): string {
-  return `<div class="count count--${kind}"><span class="count__value">${value}</span><span class="count__label">${kind}</span></div>`;
+  const none = value === 0 ? ' count--none' : '';
+  return `<div class="count count--${kind}${none}"><span class="count__value">${value}</span><span class="count__label">${kind}</span></div>`;
 }
 
 /**

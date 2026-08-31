@@ -394,7 +394,7 @@ function abandoned(job: Job, config: Config, reason: string): Comparison {
     logs: null,
     answers: null,
     kinds: [],
-    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, detail: null },
+    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, pictures: null, detail: null },
     capture: null,
     error: reason,
     durationMs: 0,
@@ -634,6 +634,9 @@ async function compare(
         stored: outcome.format,
         answer: null,
         html: outcome.html,
+        // Kept with the earlier run, so a side reused from it is still judged
+        // on where its pictures are rather than losing them with the capture.
+        pictures: outcome.pictures,
         logs: outcome.logs,
       };
     }
@@ -683,10 +686,19 @@ async function compare(
       // exactly zero.
       const [readA, readB] = await Promise.all([toPixels(storedA, format), toPixels(storedB, format)]);
 
+      // Only where both sides said where their pictures are. One side without
+      // them cannot agree with the other about a rectangle, and a comparison
+      // is never made more forgiving by half the evidence.
+      const pictures =
+        shotA.pictures.length > 0 && shotB.pictures.length > 0
+          ? { a: shotA.pictures, b: shotB.pictures }
+          : null;
+
       const { result, image } = diffImages(readA ?? storedA, readB ?? storedB, {
         pixelThreshold: config.pixelThreshold,
         ignoreAntialiasing: config.ignoreAntialiasing,
         alignRows: config.alignRows,
+        pictures,
       });
 
       // A comparison that found nothing has a difference picture with nothing
@@ -704,6 +716,7 @@ async function compare(
         htmlB: null,
         patch: null,
         result: `shots/${job.id}.json`,
+        pictures: pictures ? `shots/${job.id}.pictures.json` : null,
         detail: caseFile(job.id),
       };
 
@@ -711,6 +724,13 @@ async function compare(
         writeFile(join(shotsDir, `${job.id}.a.${format}`), storedA),
         writeFile(join(shotsDir, `${job.id}.b.${format}`), storedB),
       ];
+      // Beside the screenshots, so a later run that takes one of these sides
+      // can still tell a re-encoded photograph from a changed one.
+      if (pictures) {
+        writes.push(
+          writeFile(join(shotsDir, `${job.id}.pictures.json`), `${JSON.stringify(pictures)}\n`)
+        );
+      }
       if (differs) {
         writes.push(
           forDiff(image, format).then((bytes) =>
@@ -823,7 +843,7 @@ async function compare(
     logs: null,
     answers: null,
     kinds: [],
-    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, detail: null },
+    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, pictures: null, detail: null },
     capture,
     command,
     ranAt: new Date().toISOString(),
@@ -850,7 +870,7 @@ function skipped(job: Job, config: Config): Comparison {
     logs: null,
     answers: null,
     kinds: [],
-    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, detail: null },
+    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, pictures: null, detail: null },
     capture: null,
     error: null,
     durationMs: 0,

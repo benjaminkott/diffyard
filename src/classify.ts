@@ -60,6 +60,20 @@ export function classify(input: Classifiable): DiffKind[] {
   // markup mentions it: the src is the same, the picture is not there.
   if (logs?.differs && oneSidedResourceFailure(logs)) kinds.add('image');
 
+  // A picture the two systems produced two files of. Not a difference in the
+  // page, and worth saying rather than silently leaving out of the number.
+  if (diff.redelivered > 0) kinds.add('redelivered');
+
+  // And what differed where no picture is, in blocks that average to the same
+  // thing on both sides -- a logo rasterised differently, text hinted
+  // differently. Said rather than silently dropped from the number.
+  if (diff.unseen > 0) kinds.add('unseen');
+
+  // A picture both sides have and draw at different heights. Its own finding
+  // whatever the pixels inside it say: it is what makes the page below it end
+  // a few rows short of the other one.
+  if (diff.resized > 0) kinds.add('resized');
+
   if (diff.sizeMismatch) kinds.add('size');
   if (Math.abs(diff.aligned?.shift ?? 0) >= SHIFT) kinds.add('moved');
 
@@ -67,7 +81,9 @@ export function classify(input: Classifiable): DiffKind[] {
   // documents whose only differences were the build ones discounted above. A
   // font, an image whose address stayed put while its content changed, a
   // gradient, something timing-dependent -- the kind nothing else explains.
-  const explained = kinds.has('image') || kinds.has('text') || kinds.has('markup');
+  const explained =
+    kinds.has('image') || kinds.has('text') || kinds.has('markup') ||
+    kinds.has('redelivered') || kinds.has('unseen');
   if (diff.ratio > 0 && !explained) kinds.add('rendering');
 
   return ORDER.filter((kind) => kinds.has(kind));
@@ -81,7 +97,7 @@ export function classify(input: Classifiable): DiffKind[] {
  * anyway, because this is also what the run is tallied against, and a kind
  * missing from it was counted as NaN and so never offered as a filter.
  */
-const ORDER: DiffKind[] = ['answer', 'image', 'text', 'markup', 'moved', 'size', 'rendering'];
+const ORDER: DiffKind[] = ['answer', 'resized', 'redelivered', 'unseen', 'image', 'text', 'markup', 'moved', 'size', 'rendering'];
 
 /**
  * Whether the two sides answered the same question.
@@ -98,6 +114,9 @@ export function answersDiffer(answers: Comparison['answers']): boolean {
 
 export const KIND_LABELS: Record<DiffKind, string> = {
   answer: 'Answered differently',
+  redelivered: 'Picture delivered differently',
+  unseen: 'Too small to see',
+  resized: 'Picture drawn at another size',
   image: 'Image changed',
   text: 'Text changed',
   markup: 'Structure changed',

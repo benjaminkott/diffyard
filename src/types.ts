@@ -391,6 +391,22 @@ export interface MarkupOptions {
  * differ in host by definition, so comparing absolute addresses would call
  * every page a redirect.
  */
+/**
+ * Where a page says a picture is, in screenshot pixels.
+ *
+ * Collected while the page is photographed, because it takes a laid-out
+ * document to know: an <img> is not where the markup says it is, and a
+ * background image is not in the markup at all.
+ */
+export interface Picture {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** The address it was loaded from, for the report to name. */
+  src: string;
+}
+
 export interface Answer {
   /** The final status, after any redirects. Null when nothing answered. */
   status: number | null;
@@ -449,6 +465,28 @@ export interface DiffResult {
   unaligned: { ratio: number; diffPixels: number } | null;
   /** Share of differing pixels, 0..1. */
   ratio: number;
+  /**
+   * Pixels that differ only because a picture was delivered differently: the
+   * page says there is a picture there, and the two versions of it are the
+   * same picture once you stop reading it at a hundred per cent. Drawn in the
+   * difference picture in their own colour, and not in `diffPixels`.
+   */
+  redelivered: number;
+  /**
+   * Pixels that differ nowhere a picture is, in blocks whose two sides average
+   * to the same thing: a logo the two systems rasterised differently, text
+   * they hinted differently. Drawn in the same colour, and not in
+   * `diffPixels`.
+   */
+  unseen: number;
+  /**
+   * Pictures both sides place in the same column at the same width and draw at
+   * a different height. Measured across a real upgrade: 1,329 of 19,229 came
+   * out exactly one pixel shorter on the new system, which is a rounding
+   * difference in working a height out from an aspect ratio -- and the reason
+   * those pages ended a few rows short of the old ones.
+   */
+  resized: number;
   width: number;
   height: number;
   /** True when A and B had different dimensions and were padded to match. */
@@ -502,7 +540,17 @@ export interface SideCapture {
  * established -- the markup diff, the alignment, what the page said -- rather
  * than guessed at from the pixels.
  */
-export type DiffKind = 'answer' | 'image' | 'text' | 'markup' | 'moved' | 'size' | 'rendering';
+export type DiffKind =
+  | 'answer'
+  | 'redelivered'
+  | 'unseen'
+  | 'resized'
+  | 'image'
+  | 'text'
+  | 'markup'
+  | 'moved'
+  | 'size'
+  | 'rendering';
 
 export type ComparisonStatus = 'pass' | 'fail' | 'error' | 'skipped' | 'timeout';
 
@@ -544,6 +592,15 @@ export interface Comparison {
      * scenario is a directory listing, not a search through nine hundred.
      */
     result: string | null;
+    /**
+     * Where each side said its pictures are, both sides in one file.
+     *
+     * Beside the run rather than in it: a page carries dozens of rectangles,
+     * and nine hundred pages of them would be several megabytes in the record
+     * every reader loads. Kept because a later run that reuses a side has to
+     * be able to judge its pictures without photographing it again.
+     */
+    pictures: string | null;
     /**
      * The part of this comparison the report loads only when it is opened.
      * Named here rather than worked out from the id, so the report follows a

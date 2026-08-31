@@ -376,6 +376,28 @@ on a single scenario:
   cannot swallow your clicks)
 - `threshold` — allow a share of differing pixels
 
+All of them are applied after the pictures are taken, so a run already on disk
+can be scored again under different ones and nothing is captured — see
+[docs/reusing-shots.md](docs/reusing-shots.md).
+
+Photographs need none of them. Two systems rarely serve one as the same file,
+and a picture re-encoded or scaled by a different pipeline differs in every
+edge it has — measured across two builds of one site, sixty per cent of a
+page's pixels. diffyard records where the page says its pictures are while it
+photographs it, and where both sides agree there is one, asks whether the two
+versions are still different when they are no longer read at a hundred per
+cent. If they are not, those pixels are set aside: drawn in blue in the
+difference picture, named in the report, and out of the percentage. A picture
+swapped for another one is not — that is a difference at any size, and it is
+reported as one.
+
+The same question is then asked of everything else that differs, block by block
+and more strictly, because half of what two systems render differently is not
+in an `img` at all: a logo rasterised differently, text hinted differently.
+`pixelThreshold: 0` turns both off — asking for zero tolerance is asking for
+every difference to be counted. See
+[docs/how-it-works.md](docs/how-it-works.md).
+
 ### Markup diff
 
 Alongside the pixel comparison, the serialised DOM of both sides is diffed. It

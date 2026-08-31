@@ -2,7 +2,10 @@ import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 import { align } from './align.js';
 import type { Edit, RowSignatures } from './align.js';
-import type { DiffRegion, DiffResult } from './types.js';
+import { isMarked } from './marks.js';
+import { rowsInOrder, setAsidePictures, setAsideQuiet, shared } from './pictures.js';
+import type { Rows } from './pictures.js';
+import type { DiffRegion, DiffResult, Picture } from './types.js';
 
 export interface DiffOptions {
   /** Colour distance tolerance handed to pixelmatch, 0..1. */
@@ -10,6 +13,12 @@ export interface DiffOptions {
   ignoreAntialiasing: boolean;
   /** Match rows up before comparing, so a shifted page is not a changed one. */
   alignRows: boolean;
+  /**
+   * Where each side says its pictures are. A difference inside a rectangle
+   * both sides have, that is the same picture once it is no longer read at a
+   * hundred per cent, is set aside rather than counted. See pictures.ts.
+   */
+  pictures?: { a: Picture[]; b: Picture[] } | null;
 }
 
 export interface DiffOutput {
@@ -138,6 +147,9 @@ interface Stats {
   height: number;
   profile: number[];
   regions: DiffRegion[];
+  redelivered: number;
+  unseen: number;
+  resized: number;
 }
 
 /** Pixels compared where they sit, both pages padded to the union size. */
@@ -161,7 +173,11 @@ function comparePositionally(a: PNG, b: PNG, options: DiffOptions): { image: PNG
     }
   );
 
-  return { image, stats: summarise(image, width, height, diffPixels) };
+  const aside = setAside(a, b, image, options, rowsInOrder(height));
+  return {
+    image,
+    stats: summarise(image, width, height, diffPixels - aside.pictures - aside.unseen, aside),
+  };
 }
 
 /**
@@ -188,7 +204,20 @@ function compareAligned(
   let addedRows = 0;
   let removedRows = 0;
 
+  // Where each row of A ended up, and what each output row was compared
+  // against, so anything working in page coordinates -- the pictures -- can
+  // find its way through the alignment.
+  const rows: Rows = {
+    fromA: new Int32Array(a.height).fill(-1),
+    toA: new Int32Array(Math.max(1, edits.length)).fill(-1),
+    toB: new Int32Array(Math.max(1, edits.length)).fill(-1),
+  };
+
   for (const [index, edit] of edits.entries()) {
+    if (edit.type !== 'add') rows.fromA[edit.a] = index;
+    if (edit.type !== 'add') rows.toA[index] = edit.a;
+    if (edit.type !== 'remove') rows.toB[index] = edit.b;
+
     if (edit.type === 'match' || edit.type === 'change') {
       copyRow(a, edit.a, rowA);
       copyRow(b, edit.b, rowB);
@@ -215,14 +244,57 @@ function compareAligned(
     else removedRows += 1;
   }
 
+  // After the rows are assembled rather than per row: a picture is a
+  // rectangle, and a row on its own cannot see one.
+  const aside = setAside(a, b, image, options, rows);
+
   return {
     image,
-    stats: summarise(image, width, image.height, diffPixels),
+    stats: summarise(image, width, image.height, diffPixels - aside.pictures - aside.unseen, aside),
     shift: { addedRows, removedRows, shift: addedRows - removedRows },
   };
 }
 
-function summarise(image: PNG, width: number, height: number, diffPixels: number): Stats {
+/**
+ * What differs and cannot be seen, taken out of the count.
+ *
+ * Two passes, in this order. A picture both sides place in the same rectangle
+ * is judged as a whole, which is what lets a photograph keep the odd hard edge
+ * its scaler moved. Whatever is still marked afterwards is judged block by
+ * block and more strictly, because no picture vouches for it.
+ *
+ * Without the rectangles only the second pass runs, so an older report or a
+ * side taken from one still loses nothing but the picture judgement.
+ */
+function setAside(
+  a: PNG,
+  b: PNG,
+  image: PNG,
+  options: DiffOptions,
+  rows: Rows
+): { pictures: number; unseen: number; resized: number } {
+  // Zero tolerance is asked for by someone who wants every difference counted,
+  // and setting one aside for being hard to see is the opposite of that.
+  if (options.pixelThreshold === 0) return { pictures: 0, unseen: 0, resized: 0 };
+
+  const verdict = options.pictures
+    ? setAsidePictures(a, b, image, shared(options.pictures.a, options.pictures.b), rows)
+    : { pixels: 0, resized: 0 };
+
+  return {
+    pictures: verdict.pixels,
+    resized: verdict.resized,
+    unseen: setAsideQuiet(a, b, image, rows),
+  };
+}
+
+function summarise(
+  image: PNG,
+  width: number,
+  height: number,
+  diffPixels: number,
+  aside: { pictures: number; unseen: number; resized: number }
+): Stats {
   const perRow = countPerRow(image, width, height);
   const totalPixels = width * height;
 
@@ -234,6 +306,9 @@ function summarise(image: PNG, width: number, height: number, diffPixels: number
     height,
     profile: bandProfile(perRow, width, height),
     regions: regionsOf(perRow, width),
+    redelivered: aside.pictures,
+    unseen: aside.unseen,
+    resized: aside.resized,
   };
 }
 
@@ -305,11 +380,10 @@ function countPerRow(diff: PNG, width: number, height: number): number[] {
 
     for (let x = 0; x < width; x += 1) {
       const at = (width * y + x) << 2;
-      const red = diff.data[at]!;
-      const green = diff.data[at + 1]!;
-      const blue = diff.data[at + 2]!;
-      // Changed pixels are drawn red, orange or tinted; unchanged ones are grey.
-      if (Math.abs(red - green) > 25 || Math.abs(green - blue) > 25) changed += 1;
+      // Changed pixels are drawn red, orange or tinted; unchanged ones are
+      // grey, and areas set aside as specks have their own colour, so the
+      // profile takes a reader to what the percentage is made of.
+      if (isMarked(diff.data[at]!, diff.data[at + 1]!, diff.data[at + 2]!)) changed += 1;
     }
 
     counts[y] = changed;

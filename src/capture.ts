@@ -6,7 +6,18 @@ import type { Browser, BrowserContext, Locator, Page } from 'playwright';
 import { resolveUrl } from './config.js';
 import { fold, keeps } from './logs.js';
 import { describeStep, runStep } from './steps.js';
-import type { Answer, Config, LogEntry, LogKind, Scenario, Side, SideConfig, Step, Viewport } from './types.js';
+import type {
+  Answer,
+  Config,
+  LogEntry,
+  LogKind,
+  Picture,
+  Scenario,
+  Side,
+  SideConfig,
+  Step,
+  Viewport,
+} from './types.js';
 
 /** No browser to drive, and the run cannot get one. Named so the CLI can say so. */
 export class BrowserError extends Error {}
@@ -167,8 +178,75 @@ export interface CaptureOutcome {
   png: Buffer;
   /** Serialised DOM at screenshot time, or null when markup diffing is off. */
   html: string | null;
+  /**
+   * Where the page says its pictures are, in the coordinates of the shot.
+   *
+   * Two systems rarely serve a photograph as the same file, and the difference
+   * between two encodings of one picture is not a difference in the page. It
+   * takes a laid-out document to know where they are, so they are collected
+   * here rather than read out of the markup afterwards.
+   */
+  pictures: Picture[];
   /** What the page said while it was being photographed. */
   logs: LogEntry[];
+}
+
+/**
+ * Every rectangle on the page that holds a picture, in the coordinates of the
+ * screenshot that was just taken.
+ *
+ * Elements first, then anything with a background image, because half the
+ * photographs on a page are not <img> at all. Screenshots are taken at CSS
+ * scale, so a CSS pixel is a pixel of the shot whatever the device ratio is;
+ * a full-page shot starts at the top of the document and a viewport one at the
+ * scroll position, which is the only difference between the two.
+ *
+ * A clipped scenario is left alone: its shot is of one element and these
+ * coordinates would be of the page around it.
+ */
+async function picturesOf(page: Page, scenario: Scenario): Promise<Picture[]> {
+  if (scenario.clip) return [];
+
+  try {
+    return await page.evaluate((fullPage: boolean) => {
+      const found: { x: number; y: number; width: number; height: number; src: string }[] = [];
+      const offsetX = fullPage ? window.scrollX : 0;
+      const offsetY = fullPage ? window.scrollY : 0;
+
+      // Smaller than this is an icon or a spacer: too little to average over,
+      // and too little to be worth the doubt.
+      const ENOUGH = 24;
+
+      const add = (element: Element, src: string): void => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width < ENOUGH || rect.height < ENOUGH) return;
+        found.push({
+          x: Math.round(rect.left + offsetX),
+          y: Math.round(rect.top + offsetY),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          src,
+        });
+      };
+
+      for (const element of document.querySelectorAll('img, video, canvas, svg')) {
+        const image = element as HTMLImageElement;
+        add(element, image.currentSrc || image.src || '');
+      }
+
+      for (const element of document.querySelectorAll('*')) {
+        const background = window.getComputedStyle(element).backgroundImage;
+        if (!background || background.indexOf('url(') === -1) continue;
+        add(element, background);
+      }
+
+      return found;
+    }, scenario.fullPage);
+  } catch {
+    // A page that navigated away or closed under us has no rectangles to give;
+    // the comparison is still a comparison, just without them.
+    return [];
+  }
 }
 
 /**
@@ -256,8 +334,11 @@ export class Capturer {
       });
 
       const html = config.markup.enabled ? await page.content() : null;
+      // After the screenshot, from the same page in the same state, so the
+      // rectangles are the rectangles in the picture that was just taken.
+      const pictures = await picturesOf(page, scenario);
 
-      return { url, answer, png, html, logs: fold(logs, config.logs.max) };
+      return { url, answer, png, html, pictures, logs: fold(logs, config.logs.max) };
     } finally {
       await page.close();
     }

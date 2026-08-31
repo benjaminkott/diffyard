@@ -18,7 +18,7 @@ import { formatOf, toPixels } from './images.js';
 import type { Pixels } from './images.js';
 import { join } from 'node:path';
 import { resolveUrl } from './config.js';
-import type { Comparison, Config, LogEntry, RunResult, Scenario, Side, Viewport } from './types.js';
+import type { Comparison, Config, LogEntry, Picture, RunResult, Scenario, Side, Viewport } from './types.js';
 
 /** Where the reused shots come from, and how old they are. */
 export interface ReuseSource {
@@ -40,6 +40,8 @@ export type ReuseOutcome =
       html: string | null;
       url: string;
       logs: LogEntry[];
+      /** Where this side said its pictures were, empty when it did not say. */
+      pictures: Picture[];
     }
   | { reused: false; reason: ReuseMiss };
 
@@ -203,9 +205,28 @@ export class ReuseStore {
       const html = needs.html && htmlPath ? await readFile(join(this.source.dir, htmlPath), 'utf8') : null;
       const url = side === 'a' ? previous.urlA : previous.urlB;
       const logs = previous.logs ? previous.logs[side] : [];
-      return { reused: true, png, pixels, format, html, url, logs };
+      return { reused: true, png, pixels, format, html, url, logs, pictures: await this.picturesOf(previous, side) };
     } catch {
       return { reused: false, reason: 'missing' };
+    }
+  }
+
+  /**
+   * Where that side said its pictures were, from the earlier run's own file.
+   *
+   * Missing is not a miss: a run made before this was recorded is still a
+   * perfectly good screenshot, and the comparison simply counts every pixel
+   * the way it always did.
+   */
+  private async picturesOf(previous: Comparison, side: Side): Promise<Picture[]> {
+    if (!previous.files.pictures) return [];
+
+    try {
+      const text = await readFile(join(this.source.dir, previous.files.pictures), 'utf8');
+      const held = JSON.parse(text) as { a?: Picture[]; b?: Picture[] };
+      return held[side] ?? [];
+    } catch {
+      return [];
     }
   }
 }

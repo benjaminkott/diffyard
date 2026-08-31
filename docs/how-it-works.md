@@ -60,6 +60,89 @@ difference that is not there; if both are cut short the same way — the usual
 case, since the two sides are the same site — you get a clean comparison of two
 blank areas, and the page was never checked at all.
 
+## The same picture, delivered twice
+
+An asset pipeline that re-encodes a photograph, or scales it with a different
+filter, changes every pixel of it a little and every edge in it a lot: a hard
+edge that moved by half a pixel is a difference of two hundred levels. Measured
+across two builds of one site, sixty per cent of a page's pixels differed by
+something, two thirds of those by eight levels or fewer, and it was enough to
+fail every page with a photograph on it.
+
+Neither obvious remedy works. A colour tolerance wide enough to forgive that
+half-pixel edge forgives a real change of the same size. A smallest-area rule
+fails from the other end: the noise of one photograph came in areas of up to
+nine hundred pixels, while a changed word is thirty.
+
+What separates them is whether the difference survives not looking closely.
+Averaged over eight-by-eight blocks, a photograph delivered twice differs by a
+couple of levels; a line of text that changed differs by eighty, and a picture
+swapped for another by two hundred and thirty.
+
+Two details decide whether that works in practice, and both were measured on a
+gallery of fifty-seven photographs. The single worst block is too brittle to
+judge on: several of those came to 12.4, 12.1 and 13.5 with a tenth of a per
+cent of their blocks over the line — three blocks in seven hundred, at the hard
+edges the scaler moved — and the whole picture was reported as changed. So a
+hundredth of a picture is allowed over the line, while a planted line of text
+puts every block of its area over and a swapped picture puts all of them over.
+And a block that fails is measured again against the eight positions around it:
+two pipelines scaling one picture put it a fraction of a pixel apart, and a
+hard edge half a pixel over is a block average thirty levels out while being
+the same edge. With both, those photographs came in between 3 and 7 rather
+than at 12 and 13.
+
+So while a page is photographed, every rectangle holding a picture is recorded
+— `img`, `video`, `canvas`, `svg`, and anything with a background image, since
+half the photographs on a page are not `img` at all. Where both sides say there
+is a picture in the same place, and the two versions come out the same under
+that averaging, the pixels inside it are set aside: drawn in blue rather than
+red, counted in `redelivered` rather than in the difference, and filed under
+*Picture delivered differently* so the report can say what happened. Everywhere
+else on the page, and for any picture only one side has, nothing changes.
+
+A picture is offered two placements, and either will do. The first is where
+the row matching says the two pages meet; the second is where each side's own
+layout puts that picture. A page that gives up a pixel or two per section has
+them disagree, and measured over a run's failing comparisons each was right
+where the other was wrong: 94 pictures excused one way, 118 the other, 142 by
+one or the other.
+
+The same question is then asked of everything still marked, block by block.
+Measured on that run once the pictures were handled: ninety-nine per cent of
+what was still counted sat outside every rectangle — logos and icons the two
+systems rasterised differently, text they hinted differently — and nine tenths
+of it was equally invisible. One page came to 0.455%, of which 0.045% could be
+seen at all.
+
+Outside a picture the rule is stricter, in two ways, because no picture vouches
+for it: every block has to be quiet on its own rather than all but a hundredth
+of them, and none is measured against the positions around it. That slack is
+for two pipelines scaling one photograph; applied to the whole page it would
+also excuse an area that grew a shade darker, which is a change somebody made.
+A block that cannot be compared in full — where one page is longer than the
+other — is never set aside.
+
+A picture both sides place in the same column at the same width and draw at a
+different height is reported as exactly that, whatever the pixels inside it
+say — kind *Picture drawn at another size*, and one line at the end of the run
+counting them. Measured across a real upgrade: 1,329 of 19,229 pictures came
+out exactly one pixel shorter on the new system, a rounding difference in
+working a height out from an aspect ratio. Every page carrying such a picture
+then ends a few rows short of the other, which the comparison reports as rows
+one side does not have — nine tenths of everything still counted on those
+pages, a hundred and eighty findings all saying the same thing. Named once it
+is one line and a place to start.
+
+`pixelThreshold: 0` turns both off. Asking for zero tolerance is asking for
+every difference to be counted, and setting one aside for being hard to see is
+the opposite of that.
+
+The rectangles are written beside the screenshots, so a later run that reuses a
+side can still tell the two apart. A run made before they were recorded, or a
+scenario that photographs one element rather than the page, counts every pixel
+the way it always did.
+
 ## What is held still
 
 Two live systems are never pixel-identical by accident. The following run by

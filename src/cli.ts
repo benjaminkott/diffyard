@@ -1004,6 +1004,28 @@ function summary(
     );
   }
 
+  /*
+   * One rounding difference, said once.
+   *
+   * Two systems that work a picture's height out from an aspect ratio can
+   * disagree by a pixel, and then every page carrying such a picture ends a
+   * few rows short of the other -- which the comparison reports as rows one
+   * side does not have, once per page, nine hundred times. Measured on a real
+   * upgrade: 1,329 pictures of 19,229, and it accounted for nine tenths of
+   * everything still being counted. Named here it is one line and a place to
+   * start; left unnamed it is a hundred and eighty findings that all say the
+   * same thing.
+   */
+  const resized = result.comparisons.reduce((sum, entry) => sum + (entry.diff?.resized ?? 0), 0);
+  if (resized > 0) {
+    const pages = result.comparisons.filter((entry) => (entry.diff?.resized ?? 0) > 0).length;
+    const b = result.config.labelB || 'B';
+    lines.push(
+      `\n  ${paint('grey', `${resized} picture${resized === 1 ? '' : 's'} drawn at another height by ${b}, on ${pages} page${pages === 1 ? '' : 's'}`)}\n` +
+        `    ${paint('grey', 'the page below such a picture no longer lines up, which is most of what is reported under it')}\n`
+    );
+  }
+
   if (result.commonMarkup.length > 0) {
     // Worth an ignore rule: these are the build showing through, and they sit
     // on top of every markup diff in the run.

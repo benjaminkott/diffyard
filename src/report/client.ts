@@ -273,7 +273,11 @@ export const SCRIPT = `
       // is what one would have shown.
       const difference = src(comparison.id, 'diff');
       return difference
-        ? figure('Diff — red marks what changed', difference, null, profile)
+        ? figure(
+            comparison.diff && (comparison.diff.redelivered || comparison.diff.unseen)
+              ? 'Diff — red marks what changed, blue what was set aside'
+              : 'Diff — red marks what changed',
+            difference, null, profile)
         : figure('Diff — nothing differs', src(comparison.id, 'a'), null, profile, { flat: true });
     }
     if (mode === 'slider') return slider(comparison);
@@ -693,6 +697,22 @@ export const SCRIPT = `
     return box;
   }
 
+  /** One side's address, opened in its own tab. */
+  function opener(label, url) {
+    const link = document.createElement('a');
+    link.className = 'opener';
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noreferrer noopener';
+    link.title = 'Open ' + url;
+
+    const name = document.createElement('span');
+    name.className = 'opener__side';
+    name.textContent = label;
+    link.append(name, document.createTextNode(url), document.createTextNode(' ↗'));
+    return link;
+  }
+
   /**
    * The same thing in the words a tile row has room for.
    *
@@ -879,6 +899,20 @@ export const SCRIPT = `
       '<span>Difference <b>' + pct(diff.ratio) + '</b></span>' +
       '<span>Threshold <b>' + pct(comparison.threshold) + '</b></span>' +
       '<span>Pixels <b>' + diff.diffPixels.toLocaleString() + '</b> / ' + diff.totalPixels.toLocaleString() + '</span>' +
+      // What was found and not counted, so the picture and the percentage
+      // agree: the blue in it is here, and nowhere in the number above.
+      (diff.resized
+        ? '<span>Pictures at another size <b>' + diff.resized + '</b></span>'
+        : '') +
+      (diff.redelivered || diff.unseen
+        ? '<span>Set aside <b>' + ((diff.redelivered || 0) + (diff.unseen || 0)).toLocaleString() + '</b> px ' +
+          '<span class="aside">(' +
+          [
+            diff.redelivered ? diff.redelivered.toLocaleString() + ' in pictures both sides have' : '',
+            diff.unseen ? diff.unseen.toLocaleString() + ' too small to see' : '',
+          ].filter(Boolean).join(', ') +
+          ')</span></span>'
+        : '') +
       '<span>Size <b>' + diff.width + '×' + diff.height + '</b></span>' +
       (diff.aligned && diff.aligned.shift !== 0
         ? '<span>Moved <b>' + (diff.aligned.shift > 0 ? '+' : '') + diff.aligned.shift + 'px</b>' +
@@ -1252,7 +1286,16 @@ export const SCRIPT = `
     }
     heading.append(document.createTextNode(lead ? lead.scenario : scenario));
     const where = document.getElementById('detail-where');
-    where.textContent = lead && lead.urlA ? lead.urlA + '  →  ' + lead.urlB : '';
+    where.textContent = '';
+    if (lead && lead.urlA) {
+      // The addresses themselves, as the way to open them. Working through a
+      // finding means looking at the page it is on, and the report is a file
+      // on disk with no way back to the site unless it offers one.
+      where.append(
+        opener(result.config.labelA || 'A', lead.urlA),
+        opener(result.config.labelB || 'B', lead.urlB)
+      );
+    }
 
     const order = overviewOrder();
     const at = order.indexOf(scenario);

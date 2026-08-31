@@ -97,7 +97,7 @@ describe('diffImages', () => {
     const a = png(10, 10, [255, 255, 255]);
     const b = png(10, 10, [252, 252, 252]);
 
-    assert.equal(diffImages(a, b, { pixelThreshold: 0.1, ignoreAntialiasing: true, alignRows: false }).result.diffPixels, 0);
-    assert.ok(diffImages(a, b, { pixelThreshold: 0, ignoreAntialiasing: true, alignRows: false }).result.diffPixels > 0);
+    assert.equal(diffImages(a, b, { ...OPTIONS }).result.diffPixels, 0);
+    assert.ok(diffImages(a, b, { ...OPTIONS, pixelThreshold: 0 }).result.diffPixels > 0);
   });
 });

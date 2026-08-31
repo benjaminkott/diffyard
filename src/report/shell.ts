@@ -44,7 +44,6 @@ export function shell(result: RunResult, config: Config, data: string): string {
     <p class="meta">${escapeHtml(formatMeta(result))}
       <button type="button" class="meta__link" id="open-settings">Settings</button>
     </p>
-    ${reuseBanner(result)}
   </div>
   <div class="totals">
     ${totalTile('failed', result.failed)}
@@ -52,6 +51,7 @@ export function shell(result: RunResult, config: Config, data: string): string {
     ${totalTile('errored', result.errored)}
     ${totalTile('skipped', result.skipped)}
   </div>
+  ${reuseBanner(result)}
 </header>
 
 <div class="controls">
@@ -71,6 +71,7 @@ export function shell(result: RunResult, config: Config, data: string): string {
       <option value="name">Name</option>
     </select>
   </label>
+  ${groupToggle(result)}
   <label class="search">
     <input type="search" id="search" placeholder="Filter by name or URL…" autocomplete="off">
   </label>
@@ -298,6 +299,29 @@ function kindFilters(result: RunResult): string {
     '<option value="any">Any kind</option>' +
     options +
     '</select></label>'
+  );
+}
+
+/**
+ * The switch that turns the grouping off.
+ *
+ * The tiles are ordered across the whole run and then bucketed by site, so
+ * "largest difference" puts the worst site first and its pages under it --
+ * not the worst pages of the run. Which of the two is wanted depends on the
+ * question, so it is asked here rather than decided.
+ *
+ * Left out where every scenario is in the same group, or in none: a switch
+ * between one arrangement and the same arrangement.
+ */
+function groupToggle(result: RunResult): string {
+  const groups = new Set(result.comparisons.map((comparison) => comparison.group ?? ''));
+  if (groups.size < 2) return '';
+
+  return (
+    '<label class="check sort--overview">' +
+    '<input type="checkbox" id="grouped" checked>' +
+    '<span>Group by site</span>' +
+    '</label>'
   );
 }
 

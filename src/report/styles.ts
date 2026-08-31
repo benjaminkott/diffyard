@@ -141,9 +141,13 @@ code { font-family: var(--mono); font-size: var(--t-sm); }
 }
 .chip--b { background: var(--accent); color: var(--on-accent); }
 .topbar .meta { margin: var(--s-2) 0 0; color: var(--subtle); font-size: var(--t-xs); }
+/* Its own row. Inside the title column it was a sentence of provenance being
+   wrapped to half the width while the space beside it stood empty. */
 .topbar .reused {
-  margin: var(--s-2) 0 0;
+  flex-basis: 100%;
+  margin: var(--s-1) 0 0;
   padding: var(--s-1) var(--s-3);
+  align-self: flex-start;
   display: inline-block;
   border-radius: var(--r-sm);
   background: var(--level-1);
@@ -208,6 +212,11 @@ code { font-family: var(--mono); font-size: var(--t-sm); }
 }
 
 .sort { display: inline-flex; align-items: center; gap: var(--s-2); color: var(--muted); font-size: var(--t-sm); }
+.check {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  color: var(--muted); font-size: var(--t-sm); cursor: pointer; user-select: none;
+}
+.check input { accent-color: var(--accent); cursor: pointer; margin: 0; }
 .search { flex: 1 1 220px; min-width: 160px; }
 .search input { width: 100%; }
 
@@ -239,6 +248,7 @@ select:hover, input[type=search]:hover { border-color: var(--border-strong); }
 .overview__head h2 { margin: 0; font-size: var(--t-lg); font-weight: 620; letter-spacing: -.01em; }
 .overview__hint { margin: 0; color: var(--muted); font-size: var(--t-sm); }
 
+.tile__site { color: var(--subtle); font-weight: 500; }
 .tiles { display: grid; gap: var(--s-3); grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 
 /* A group is a site, and a suite is usually several of them checked the same

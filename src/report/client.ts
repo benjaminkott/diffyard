@@ -37,7 +37,7 @@ export const SCRIPT = `
     return document.getElementById(id).content.cloneNode(true).firstElementChild;
   }
   const KIND_LABELS = ${JSON.stringify(KIND_LABELS)};
-  const state = { filter: 'all', kind: 'any', sort: 'diff', query: '', scenario: null, mode: 'diff' };
+  const state = { filter: 'all', kind: 'any', sort: 'diff', query: '', scenario: null, mode: 'diff', grouped: true };
 
   const src = (id, side) => sources[id + ':' + side] || '';
   const pct = (ratio) => (ratio * 100).toFixed(2) + '%';
@@ -892,7 +892,10 @@ export const SCRIPT = `
       groups.get(name).push(scenario);
     }
 
-    if (groups.size === 1 && groups.has(null)) {
+    // One flat list, in the order chosen. With the grouping on, that order
+    // only decides which group comes first and what sits at the top of each;
+    // off, it is the whole run from worst to best.
+    if (!state.grouped || (groups.size === 1 && groups.has(null))) {
       container.className = 'tiles';
       container.replaceChildren(...order.map((scenario) => tile(scenario, viewports, cells, scale)));
       return;
@@ -962,7 +965,17 @@ export const SCRIPT = `
     const lead = entries.find((entry) => entry.files && entry.files.diff) ?? entries[0];
 
     const element = clone('tile-template');
-    element.querySelector('.tile__name').textContent = lead ? lead.scenario : scenario;
+
+    const name = element.querySelector('.tile__name');
+    name.textContent = lead ? lead.scenario : scenario;
+    // Without the group headings there is nothing else saying which site a
+    // page belongs to, and a flat list of nine hundred needs that.
+    if (!state.grouped && lead && lead.group) {
+      const site = document.createElement('span');
+      site.className = 'tile__site';
+      site.textContent = lead.group + ' / ';
+      name.prepend(site);
+    }
 
     const where = element.querySelector('.tile__where');
     if (lead && lead.urlA) {
@@ -1188,6 +1201,14 @@ export const SCRIPT = `
       // The kinds are a question about the list, so answering it means going
       // back to the list rather than re-rendering the one view being read.
       if (state.scenario) showOverview();
+      buildOverview();
+    });
+  }
+
+  const grouping = document.getElementById('grouped');
+  if (grouping) {
+    grouping.addEventListener('change', (event) => {
+      state.grouped = event.target.checked;
       buildOverview();
     });
   }

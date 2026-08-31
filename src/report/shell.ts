@@ -2,14 +2,32 @@ import { KIND_LABELS, tally } from '../classify.js';
 import { HOMEPAGE, VERSION } from '../manifest.js';
 import type { Config, DiffKind, RunResult } from '../types.js';
 import { SCRIPT } from './client.js';
+import { INDEX_FILE, call } from './pool.js';
 import { STYLES } from './styles.js';
+
+/**
+ * The run, linked rather than carried: one file, loaded before anything is
+ * drawn, with the per-case chunks beside it.
+ */
+export function linked(): string {
+  return `<script src="${INDEX_FILE}"></script>`;
+}
+
+/**
+ * The run, carried: every chunk inlined ahead of the index, so the report is
+ * one file that still works with nothing beside it.
+ */
+export function carried(payload: unknown, cases: [string, unknown][]): string {
+  const chunks = cases.map(([id, detail]) => `<script>${call('case', [id, detail])}</script>`);
+  return [...chunks, `<script>${call('run', payload)}</script>`].join('\n');
+}
 
 /**
  * The document the report is: its head, its chrome, and the templates the
  * client fills in. Everything here is decided before the page is open;
  * anything that depends on what the reader does is in client.ts.
  */
-export function shell(result: RunResult, config: Config, payload: unknown): string {
+export function shell(result: RunResult, config: Config, data: string): string {
     return `<!doctype html>
 <html lang="en" data-theme="auto" data-view="overview">
 <head>
@@ -127,8 +145,8 @@ export function shell(result: RunResult, config: Config, payload: unknown): stri
     <span class="colophon__version">${escapeHtml(VERSION)}</span> — visual regression by comparing two URLs.</p>
 </footer>
 
-<script id="data" type="application/json">${jsonForScript(payload)}</script>
 <script>${SCRIPT}</script>
+${data}
 </body>
 </html>
 `;
@@ -219,11 +237,6 @@ function kindFilters(result: RunResult): string {
 /** How many comparisons had one side say something the other did not. */
 function consoleDiffers(result: RunResult): number {
   return result.comparisons.filter((comparison) => comparison.logs?.differs).length;
-}
-
-/** Escapes the payload so it cannot break out of the <script> element. */
-function jsonForScript(payload: unknown): string {
-  return JSON.stringify(payload).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
 }
 
 function escapeHtml(value: string): string {

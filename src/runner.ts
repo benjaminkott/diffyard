@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Capturer } from './capture.js';
 import { classifyRun } from './classify.js';
+import { caseFile, withoutDetail } from './report/pool.js';
 import { slug } from './config.js';
 import { diffImages } from './diff.js';
 import { originOf, summarise } from './logs.js';
@@ -136,7 +137,10 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
     comparisons
       .filter((comparison) => comparison.files.result !== null)
       .map((comparison) =>
-        writeFile(join(shotsDir, `${comparison.id}.json`), `${JSON.stringify(comparison, null, 2)}\n`)
+        writeFile(
+          join(shotsDir, `${comparison.id}.json`),
+          `${JSON.stringify(withoutDetail(comparison), null, 2)}\n`
+        )
       )
   );
 
@@ -298,7 +302,7 @@ function abandoned(job: Job, config: Config, reason: string): Comparison {
     markupHunks: null,
     logs: null,
     kinds: [],
-    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null },
+    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, detail: null },
     capture: null,
     error: reason,
     durationMs: 0,
@@ -532,6 +536,7 @@ async function compare(
         htmlB: null,
         patch: null,
         result: `shots/${job.id}.json`,
+        detail: caseFile(job.id),
       };
 
       const writes: Promise<unknown>[] = [
@@ -615,7 +620,7 @@ async function compare(
     markupHunks: null,
     logs: null,
     kinds: [],
-    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null },
+    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, detail: null },
     capture,
     command,
     ranAt: new Date().toISOString(),
@@ -641,7 +646,7 @@ function skipped(job: Job, config: Config): Comparison {
     markupHunks: null,
     logs: null,
     kinds: [],
-    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null },
+    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, detail: null },
     capture: null,
     error: null,
     durationMs: 0,

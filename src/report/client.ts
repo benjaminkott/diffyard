@@ -10,8 +10,12 @@ import { KIND_LABELS } from '../classify.js';
 export const SCRIPT = `
 (() => {
   const NEWLINE = String.fromCharCode(10);
-  const payload = JSON.parse(document.getElementById('data').textContent);
-  const { result, sources } = payload;
+
+  // Filled by diffyard.run(), which is what data/run.js calls. Nothing below
+  // runs before that: the page is a shell until the run is handed to it.
+  let result = null;
+  let sources = {};
+
   const list = document.getElementById('list');
   const template = document.getElementById('card-template');
   const KIND_LABELS = ${JSON.stringify(KIND_LABELS)};
@@ -19,6 +23,60 @@ export const SCRIPT = `
 
   const src = (id, side) => sources[id + ':' + side] || '';
   const pct = (ratio) => (ratio * 100).toFixed(2) + '%';
+
+  /**
+   * The pool: what a comparison carries that only its own detail view draws.
+   *
+   * The overview needs a status, a ratio and a kind per comparison, and that
+   * is all the index holds. The markup diff of a run over nine hundred pages
+   * is a hundred and forty megabytes of it, none of it on screen until someone
+   * opens one page -- so it arrives per case, when that case is opened.
+   *
+   * It arrives as a script rather than as fetched JSON because the report is
+   * opened from a file:// URL, where fetch is blocked and a script tag is not.
+   */
+  const cases = new Map();
+  const asked = new Set();
+
+  /** The case's own data, or null while it is still on its way. */
+  function caseOf(comparison) {
+    if (!cases.has(comparison.id) && !asked.has(comparison.id)) request(comparison);
+    return cases.get(comparison.id) || null;
+  }
+
+  function request(comparison) {
+    asked.add(comparison.id);
+    const from = comparison.files && comparison.files.detail;
+
+    // No chunk to ask for -- a report written before there were any. Settled
+    // as empty rather than left pending, so the view says what it does have
+    // and points at the patch, instead of waiting for something not coming.
+    if (!from) {
+      cases.set(comparison.id, {});
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = from;
+    // Same for a chunk that will not load: an empty case reads as "not in this
+    // report", which is true, where a spinner that never stops is not.
+    script.addEventListener('error', () => { take([comparison.id, {}]); });
+    document.head.append(script);
+  }
+
+  /** What a chunk calls when it arrives, and what the shell calls inline. */
+  function take(entry) {
+    cases.set(entry[0], entry[1] || {});
+    if (result && state.scenario) render();
+  }
+
+  /** Said in place of the thing, while the thing is still being fetched. */
+  function awaiting(what) {
+    const note = document.createElement('p');
+    note.className = 'empty';
+    note.textContent = 'Loading the ' + what + '…';
+    return note;
+  }
 
   /** Comparisons left after the filter row; the overview groups these. */
   function visible() {
@@ -599,7 +657,13 @@ export const SCRIPT = `
     }
     container.append(meta);
 
-    const hunks = comparison.markupHunks || [];
+    const held = caseOf(comparison);
+    if (!held) {
+      container.append(awaiting('markup diff'));
+      return container;
+    }
+
+    const hunks = held.markupHunks || [];
     container.append(patchTable(hunks));
 
     if (markup.hunks > hunks.length) {
@@ -1316,19 +1380,6 @@ export const SCRIPT = `
     }
   }
 
-  const yaml = payload.settingsYaml;
-  if (yaml) {
-    document.getElementById('settings-yaml').hidden = false;
-    document.getElementById('settings-yaml-text').textContent = yaml;
-    const copy = document.getElementById('copy-settings');
-    copy.addEventListener('click', () => {
-      navigator.clipboard.writeText(yaml).then(() => {
-        copy.textContent = 'Copied';
-        setTimeout(() => { copy.textContent = 'Copy'; }, 1200);
-      });
-    });
-  }
-
   document.getElementById('open-settings').addEventListener('click', () => {
     const panel = document.getElementById('settings');
     if (state.scenario) showOverview();
@@ -1337,17 +1388,42 @@ export const SCRIPT = `
   });
 
   /**
-   * The whole run again, said where the run is described rather than inside a
-   * finding: from the overview the question is "look at all of this again",
-   * and a per-case line is the wrong answer to it.
+   * Everything above is the shell's behaviour and needs no data to be wired
+   * up. This is where the run itself arrives -- from data/run.js beside the
+   * report, or inlined above when the report was built to travel alone.
    */
-  if (result.command) {
-    document.getElementById('run-command').append(rerun(result.command, 'Run it all again'));
+  function boot(payload) {
+    result = payload.result;
+    sources = payload.sources || {};
+
+    const yaml = payload.settingsYaml;
+    if (yaml) {
+      document.getElementById('settings-yaml').hidden = false;
+      document.getElementById('settings-yaml-text').textContent = yaml;
+      const copy = document.getElementById('copy-settings');
+      copy.addEventListener('click', () => {
+        navigator.clipboard.writeText(yaml).then(() => {
+          copy.textContent = 'Copied';
+          setTimeout(() => { copy.textContent = 'Copy'; }, 1200);
+        });
+      });
+    }
+
+    /*
+     * The whole run again, said where the run is described rather than inside
+     * a finding: from the overview the question is "look at all of this
+     * again", and a per-case line is the wrong answer to it.
+     */
+    if (result.command) {
+      document.getElementById('run-command').append(rerun(result.command, 'Run it all again'));
+    }
+
+    buildSettings();
+    buildOverview();
+
+    applyHash();
   }
 
-  buildSettings();
-  buildOverview();
-
-  applyHash();
+  window.diffyard = { run: boot, case: take };
 })();
 `;

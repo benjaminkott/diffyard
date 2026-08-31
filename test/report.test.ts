@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { chromium } from 'playwright';
 import type { Browser, Page } from 'playwright';
 import { loadConfig } from '../dist/config.js';
 import { renderReport } from '../dist/report/index.js';
+import { readCase } from '../dist/report/pool.js';
 import type { Comparison, RunResult } from '../dist/types.js';
 import { solidPng } from './helpers/server.ts';
 
@@ -88,6 +89,7 @@ function comparison(overrides: Partial<Comparison> = {}): Comparison {
       htmlB: 'shots/home--desktop.b.html',
       patch: 'shots/home--desktop.patch',
       result: 'shots/home--desktop.json',
+      detail: 'data/home--desktop.js',
     },
     logs: {
       a: [{ kind: 'warning', text: 'Deprecated API', source: null, count: 2 }],
@@ -161,6 +163,7 @@ const RESULT: RunResult = {
         htmlB: null,
         patch: null,
         result: 'shots/about--desktop.json',
+        detail: 'data/about--desktop.js',
       },
       ranAt: '2026-08-27T10:00:44.000Z',
       capture: {
@@ -199,6 +202,7 @@ const RESULT: RunResult = {
         htmlB: 'shots/top--desktop.b.html',
         patch: 'shots/top--desktop.patch',
         result: 'shots/top--desktop.json',
+        detail: 'data/top--desktop.js',
       },
     }),
     comparison({
@@ -208,7 +212,7 @@ const RESULT: RunResult = {
       diff: null,
       markup: null,
       markupHunks: null,
-      files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null },
+      files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, detail: null },
       error: 'page.goto: Timeout 30000ms exceeded.',
     }),
   ],
@@ -280,6 +284,17 @@ const RESULT: RunResult = {
   },
 };
 
+/**
+ * A string as it reads once it is inside a script tag.
+ *
+ * The payload has its angle brackets escaped so it cannot close the tag it
+ * sits in, so looking for markup in a rendered report means looking for it in
+ * that form.
+ */
+function inScript(text: string): string {
+  return JSON.stringify(text).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').slice(1, -1);
+}
+
 /** Renders the report once and opens it, so each test starts from a page. */
 async function open(scheme: 'light' | 'dark'): Promise<{ page: Page; errors: string[] }> {
   const configFile = join(workDir, 'diffyard.yaml');
@@ -289,7 +304,15 @@ async function open(scheme: 'light' | 'dark'): Promise<{ page: Page; errors: str
   );
 
   const file = join(workDir, `report-${scheme}.html`);
-  writeFileSync(file, await renderReport({ ...RESULT, outDir: workDir }, loadConfig(configFile), { selfContained: false }));
+  const report = await renderReport({ ...RESULT, outDir: workDir }, loadConfig(configFile), { selfContained: false });
+  writeFileSync(file, report.html);
+
+  // The report is a shell; without what goes beside it there is nothing on the
+  // page to test.
+  for (const [name, body] of report.files) {
+    mkdirSync(join(workDir, dirname(name)), { recursive: true });
+    writeFileSync(join(workDir, name), body);
+  }
 
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, colorScheme: scheme });
   const errors: string[] = [];
@@ -448,6 +471,102 @@ for (const scheme of ['light', 'dark'] as const) {
     });
   });
 }
+
+/**
+ * The report is a shell, and the run is a pool of files beside it.
+ *
+ * What is being pinned here is a size: a run of nine hundred pages carries a
+ * hundred and forty megabytes of markup diff, and the report used to open by
+ * parsing all of it to draw an overview that shows none of it.
+ */
+describe('the report and the run beside it', () => {
+  it('keeps the markup diff out of the page and beside it instead', async () => {
+    const report = await renderReport(
+      { ...RESULT, outDir: workDir },
+      loadConfig(join(workDir, 'diffyard.yaml')),
+      { selfContained: false }
+    );
+
+    assert.ok(!report.html.includes(inScript('<p>a</p>')), 'the hunks are not in the document');
+    assert.match(report.html, /<script src="data\/run\.js">/, 'the document says where the run is');
+
+    const written = new Map(report.files);
+    assert.ok(written.has('data/run.js'), 'the index, for what the overview draws');
+    assert.equal(written.size, RESULT.comparisons.length + 1, 'and a chunk per comparison');
+    assert.ok(!(written.get('data/run.js') ?? '').includes(inScript('<p>a</p>')), 'not in the index either');
+
+    // Read back the way a merge into this report would read it, which is the
+    // only reason the chunk is one call around one JSON value.
+    for (const [name, body] of report.files) writeFileSync(join(workDir, name), body);
+    const held = await readCase(workDir, 'home--desktop');
+    assert.deepEqual(held?.markupHunks, RESULT.comparisons[0]?.markupHunks, 'the hunks are in the chunk');
+  });
+
+  it('asks for a comparison only when its markup is looked at', async () => {
+    const { page, errors } = await open('light');
+
+    const asked: string[] = [];
+    page.on('request', (request) => {
+      const name = request.url().split('/').pop() ?? '';
+      if (request.url().includes('/data/') && name !== 'run.js') asked.push(name);
+    });
+
+    // Opening the case is not asking for its markup: the diff view draws from
+    // the index alone, which is the whole point of splitting them.
+    await page.locator('.tile').first().click();
+    await page.waitForTimeout(200);
+    assert.deepEqual(asked, [], 'opening a comparison loads no chunk');
+
+    await page.locator('#modes button[data-mode="markup"]').click();
+    await page.waitForTimeout(400);
+    assert.deepEqual(asked, ['home--desktop.js'], 'asking for the markup loads exactly its chunk');
+
+    assert.equal(await page.getByText('Loading the markup diff').count(), 0, 'and it arrived');
+    assert.ok((await page.locator('.patch tr').count()) > 0, 'with the diff on screen');
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+
+  it('says what it has when the chunk cannot be had', async () => {
+    // A report rendered from a results.json written before there were chunks:
+    // the markup view has to say so rather than wait for one for ever.
+    const report = await renderReport(
+      { ...RESULT, outDir: workDir },
+      loadConfig(join(workDir, 'diffyard.yaml')),
+      { selfContained: false }
+    );
+    const file = join(workDir, 'orphaned.html');
+    writeFileSync(file, report.html);
+    writeFileSync(join(workDir, 'data', 'run.js'), report.files[0]?.[1] ?? '');
+    rmSync(join(workDir, 'data', 'home--desktop.js'), { force: true });
+
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    await page.goto(`file://${file}`);
+    await page.waitForTimeout(200);
+    await page.locator('.tile').first().click();
+    await page.locator('#modes button[data-mode="markup"]').click();
+    await page.waitForTimeout(500);
+
+    assert.equal(await page.getByText('Loading the markup diff').count(), 0, 'not left waiting');
+    assert.match(
+      (await page.locator('.warn').textContent()) ?? '',
+      /\.patch file/,
+      'and pointed at the file that does have it'
+    );
+    await page.close();
+  });
+
+  it('carries the whole run when it has to travel alone', async () => {
+    const report = await renderReport(
+      { ...RESULT, outDir: workDir },
+      loadConfig(join(workDir, 'diffyard.yaml')),
+      { selfContained: true }
+    );
+
+    assert.deepEqual(report.files, [], 'nothing goes beside a single file');
+    assert.ok(report.html.includes(inScript('<p>a</p>')), 'so the hunks travel in it');
+  });
+});
 
 describe('report navigation', () => {
   it('opens the scenario named in the hash', async () => {

@@ -509,6 +509,12 @@ export interface Comparison {
      * scenario is a directory listing, not a search through nine hundred.
      */
     result: string | null;
+    /**
+     * The part of this comparison the report loads only when it is opened.
+     * Named here rather than worked out from the id, so the report follows a
+     * path the run wrote instead of one it guessed.
+     */
+    detail: string | null;
   };
   /** How each side was obtained; null when the comparison never ran. */
   capture: { a: SideCapture; b: SideCapture } | null;

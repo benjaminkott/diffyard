@@ -149,12 +149,15 @@ Reading the results
                                  overlay, pixel diff, markup diff
     results.json                 every comparison with its ratio, threshold,
                                  status, markup counts and file paths
+    data/                        the run in the shape the report loads it
     shots/<scenario>--<viewport>.a.png    .b.png    .diff.png
     shots/<scenario>--<viewport>.a.html   .b.html   .patch
 
   Read results.json for the numbers, the .patch for what changed in the DOM —
   that usually explains a pixel difference — and open the .diff.png to see
-  where on the page it sits.
+  where on the page it sits. results.json does not carry the markup diff
+  itself: on a large run that is most of the file, and the .patch is the same
+  thing in the form worth reading.
 
 Two things decide whether a comparison is meaningful. A consent banner has to
 be accepted rather than removed, because an overlay left in place swallows the

@@ -8,6 +8,7 @@ import { after, before, describe, it } from 'node:test';
 import { page, serve } from './helpers/server.ts';
 import type { RunningSite } from './helpers/server.ts';
 import type { RunResult } from '../dist/types.js';
+import { readCase } from '../dist/report/pool.js';
 
 /**
  * Re-running one comparison into the report it came from.
@@ -119,6 +120,32 @@ describe('the command a result carries', () => {
     assert.ok(refreshed && untouched);
     assert.ok(refreshed.ranAt > target.ranAt, 'the one asked for ran again');
     assert.equal(untouched.ranAt, before.comparisons.find((e) => e.scenario === 'index')?.ranAt);
+  });
+
+  it('leaves the markup diff of what it did not run standing', async () => {
+    const { dir, config, out } = project();
+    await diffyard(dir, [config]);
+    const runId = latest(out);
+
+    // 'about' is the one that differs, so it is the one whose chunk is worth
+    // losing. Refreshing the other page is what puts a merge in the way of it.
+    const before = await readCase(join(out, runId), 'about--desktop');
+    assert.ok((before?.markupHunks?.length ?? 0) > 0, 'it had a markup diff to begin with');
+
+    const kinds = results(out, runId).comparisons.find((entry) => entry.scenario === 'about')?.kinds;
+
+    await diffyard(dir, [config, '--case', 'index--desktop', '--into', runId]);
+
+    // results.json does not carry the hunks, so a merge that did not read the
+    // chunk back would classify this as having no markup change and then write
+    // the chunk out again empty -- losing exactly what the report is for.
+    const after = await readCase(join(out, runId), 'about--desktop');
+    assert.deepEqual(after?.markupHunks, before?.markupHunks, 'and still has it, unchanged');
+    assert.deepEqual(
+      results(out, runId).comparisons.find((entry) => entry.scenario === 'about')?.kinds,
+      kinds,
+      'so it is still filed under the same kinds'
+    );
   });
 
   it('says in the report that part of it is newer than the run', async () => {

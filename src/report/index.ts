@@ -2,30 +2,51 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
 import type { Comparison, Config, RunResult } from '../types.js';
-import { shell } from './shell.js';
+import { INDEX_FILE, call, caseFile, forDelivery } from './pool.js';
+import { carried, linked, shell } from './shell.js';
 
 export interface ReportOptions {
   /** Inline every screenshot as a data URI so the HTML travels on its own. */
   selfContained: boolean;
 }
 
+/** The report, and whatever has to be written beside it for it to work. */
+export interface Report {
+  html: string;
+  /** Path relative to the run folder, and what goes in it. */
+  files: [string, string][];
+}
+
 /**
  * Renders the run into a single HTML document.
  *
- * With `selfContained: false` the images are referenced relatively, which keeps
- * the file small and makes the whole output directory the artifact. With
- * `selfContained: true` everything is inlined into one file that can be opened
- * straight from a CI artifact list.
+ * With `selfContained: false` the images are referenced relatively and the run
+ * is written beside the report as a pool of scripts -- an index for what the
+ * overview draws, a chunk per comparison for what only its detail view draws.
+ * The whole output directory is then the artifact. With `selfContained: true`
+ * every picture and every chunk is inlined instead, which is one file that can
+ * be opened straight from a CI artifact list.
  */
 export async function renderReport(
   result: RunResult,
   config: Config,
   options: ReportOptions
-): Promise<string> {
+): Promise<Report> {
   const sources = options.selfContained ? await inlineImages(result, result.outDir) : referenceImages(result);
-  const payload = { result, sources, settingsYaml: settingsYaml(result) };
+  const { index, cases } = forDelivery(result);
+  const payload = { result: index, sources, settingsYaml: settingsYaml(result) };
 
-  return shell(result, config, payload);
+  if (options.selfContained) {
+    return { html: shell(result, config, carried(payload, cases)), files: [] };
+  }
+
+  return {
+    html: shell(result, config, linked()),
+    files: [
+      [INDEX_FILE, call('run', payload)],
+      ...cases.map(([id, detail]): [string, string] => [caseFile(id), call('case', [id, detail])]),
+    ],
+  };
 }
 
 /**
@@ -115,10 +136,21 @@ function settingsYaml(result: RunResult): string {
   return stringify(document, { lineWidth: 0 });
 }
 
+/**
+ * The three pictures a report draws, and nothing else in `files`.
+ *
+ * The rest of that map -- the two documents, the patch, the JSON record, the
+ * chunk -- is linked to by name where it is offered, never drawn. Inlining
+ * walked the whole map, so a self-contained report carried both sides' full
+ * HTML and the patch again, base64'd and labelled as PNG.
+ */
+const DRAWN = ['a', 'b', 'diff'] as const;
+
 function referenceImages(result: RunResult): Record<string, string> {
   const sources: Record<string, string> = {};
   for (const comparison of result.comparisons) {
-    for (const [side, file] of Object.entries(comparison.files)) {
+    for (const side of DRAWN) {
+      const file = comparison.files[side];
       if (file) sources[`${comparison.id}:${side}`] = file;
     }
   }
@@ -128,7 +160,8 @@ function referenceImages(result: RunResult): Record<string, string> {
 async function inlineImages(result: RunResult, outDir: string): Promise<Record<string, string>> {
   const sources: Record<string, string> = {};
   for (const comparison of result.comparisons) {
-    for (const [side, file] of Object.entries(comparison.files)) {
+    for (const side of DRAWN) {
+      const file = comparison.files[side];
       if (!file) continue;
       const bytes = await readFile(join(outDir, file));
       sources[`${comparison.id}:${side}`] = `data:image/png;base64,${bytes.toString('base64')}`;

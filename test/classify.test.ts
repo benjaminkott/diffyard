@@ -215,7 +215,7 @@ describe('kinds decided against the whole run', () => {
       markupHunks: [hunk(lines)],
       logs: null,
       kinds: [],
-      files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null },
+      files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, detail: null },
       capture: null,
       command: '',
       ranAt: '',

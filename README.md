@@ -124,12 +124,23 @@ never ends up in a commit:
   2026-08-27_14-32-10-3f9c1a/
     index.html        side-by-side, slider, onion overlay, pixel diff, markup diff
     results.json      machine readable: ratios, thresholds, paths, errors
+    data/
+      run.js               what the report's overview draws
+      home--desktop.js     what one comparison's detail view draws, when opened
     shots/
       home--desktop.a.png    home--desktop.b.png    home--desktop.diff.png
       (no .diff.png where nothing differed — see The report, below)
       home--desktop.a.html   home--desktop.b.html   home--desktop.patch
   2026-08-27_15-01-44-b17e02/
 ```
+
+`index.html` is a shell: the run itself lives in `data/`, which is why the
+report opens on a run of nine hundred pages instead of parsing a hundred and
+forty megabytes of markup diff to draw an overview that shows none of it. The
+diff of one comparison is fetched when that comparison is opened. Both are
+scripts rather than JSON because a report is opened from a `file://` URL, where
+`fetch` is blocked and a script tag is not. `--self-contained` inlines all of
+it again into one file that travels on its own.
 
 The folder name is the start time plus a short hash, so it stays sortable and
 two runs started in the same second cannot collide. Name a run yourself with

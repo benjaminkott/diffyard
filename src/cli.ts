@@ -9,6 +9,8 @@ import { explorePage, renderExploration } from './explore.js';
 import { EXAMPLE_CONFIG } from './example.js';
 import { Progress } from './progress.js';
 import { renderReport } from './report/index.js';
+import { POOL_DIR, forDelivery, readCase, withDetail } from './report/pool.js';
+import type { CaseDetail } from './report/pool.js';
 import { SCHEMA_FILENAME, schemaJson } from './schema.js';
 import { run } from './runner.js';
 import { ReuseError } from './reuse.js';
@@ -285,11 +287,25 @@ async function mergeInto(result: RunResult): Promise<RunResult> {
     return result;
   }
 
+  // results.json no longer carries the hunks, so a comparison this run did not
+  // touch arrives without them. Both what happens next need them: the kinds are
+  // decided from them, and the chunks are written again from them -- a merge
+  // that skipped this would classify old findings as having no markup change
+  // and then overwrite their chunks with nothing.
+  const held = new Map<string, CaseDetail>();
+  await Promise.all(
+    previous.comparisons.map(async (entry) => {
+      const detail = await readCase(result.outDir, entry.id);
+      if (detail) held.set(entry.id, detail);
+    })
+  );
+  const restored = withDetail(previous, held);
+
   const fresh = new Map(result.comparisons.map((entry) => [entry.id, entry]));
-  const comparisons = previous.comparisons.map((entry) => fresh.get(entry.id) ?? entry);
+  const comparisons = restored.comparisons.map((entry) => fresh.get(entry.id) ?? entry);
 
   for (const [id, entry] of fresh) {
-    if (!previous.comparisons.some((old) => old.id === id)) comparisons.push(entry);
+    if (!restored.comparisons.some((old) => old.id === id)) comparisons.push(entry);
   }
 
   // The kinds are decided against the whole population, and one comparison on
@@ -322,17 +338,31 @@ async function writeArtifact(result: RunResult, config: Config, values: Values):
   const runDir = result.outDir;
   await mkdir(runDir, { recursive: true });
 
+  const report = await renderReport(result, config, { selfContained: false });
+
   const indexPath = join(runDir, 'index.html');
-  await writeFile(indexPath, await renderReport(result, config, { selfContained: false }));
+  await writeFile(indexPath, report.html);
   written.push(['HTML report', shortPath(indexPath)]);
 
+  // The run itself, in the shape the report reads it: an index for the
+  // overview, a chunk per comparison for what only its detail view draws.
+  for (const [name, body] of report.files) {
+    const path = join(runDir, name);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, body);
+  }
+  if (report.files.length > 0) written.push(['Report data', shortPath(join(runDir, POOL_DIR))]);
+
+  // Without the hunks: they are in the pool for the report and in the .patch
+  // for anyone reading, and a third copy of a hundred and forty megabytes is
+  // no more machine readable than the first one.
   const resultsPath = join(runDir, 'results.json');
-  await writeFile(resultsPath, `${JSON.stringify(result, null, 2)}\n`);
+  await writeFile(resultsPath, `${JSON.stringify(forDelivery(result).index, null, 2)}\n`);
   written.push(['JSON results', shortPath(resultsPath)]);
 
   if (values['self-contained'] === true) {
     const bundlePath = join(runDir, 'report.html');
-    await writeFile(bundlePath, await renderReport(result, config, { selfContained: true }));
+    await writeFile(bundlePath, (await renderReport(result, config, { selfContained: true })).html);
     written.push(['Single file', bundlePath]);
   }
 

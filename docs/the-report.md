@@ -118,6 +118,7 @@ shots/shop--checkout--desktop.a.html
 shots/shop--checkout--desktop.b.html
 shots/shop--checkout--desktop.patch
 shots/shop--checkout--desktop.json     <- the whole evaluation of this case
+data/shop--checkout--desktop.js        <- the markup diff, as the report loads it
 ```
 
 The difference picture is missing where nothing differed: it would have been
@@ -130,3 +131,9 @@ bands, the shift, the markup tally, the console comparison, the fingerprints.
 `results.json` still carries the whole run, but that is the wrong shape for
 looking at one case: a scenario should be a directory listing, not a search
 through nine hundred.
+
+Neither carries the markup diff itself. That is the one part of a comparison
+big enough to be worth not repeating — a run of nine hundred pages against a
+build whose asset pipeline differs makes a hundred and forty megabytes of it —
+so it is written once as the `.patch`, to read, and once under `data/`, in the
+shape the report loads it in when someone opens that one comparison.

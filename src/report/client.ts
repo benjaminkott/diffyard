@@ -169,6 +169,11 @@ export const SCRIPT = `
 
     const body = article.querySelector('.card__body');
 
+    // Before the pictures, because it decides whether they are worth looking
+    // at: two sides that answered differently were not asked the same thing.
+    const said = answered(comparison);
+    if (said) body.append(said);
+
     if (comparison.status === 'error' || comparison.status === 'timeout' || !comparison.diff) {
       const box = document.createElement('pre');
       box.className = comparison.error ? 'errorbox' : 'empty';
@@ -630,6 +635,49 @@ export const SCRIPT = `
 
     container.append(pair);
     return container;
+  }
+
+  /**
+   * What each side answered, where that is worth saying.
+   *
+   * A status the two sides do not share is a warning: the pictures below are
+   * of two different things, and the percentage between them is arithmetic on
+   * an answer nobody asked for. A redirect is only reported -- a suite may be
+   * pointed at addresses both sides move, and both moving to the same place is
+   * the two sides agreeing.
+   */
+  function answered(comparison) {
+    const said = comparison.answers;
+    if (!said) return null;
+
+    const differs = said.a.status !== said.b.status;
+    const moved = said.a.redirected !== said.b.redirected;
+    if (!differs && !moved && !said.a.redirected && !said.b.redirected) return null;
+
+    const box = document.createElement('p');
+    box.className = differs || moved ? 'warn' : 'note';
+
+    const a = result.config.labelA || 'A';
+    const b = result.config.labelB || 'B';
+
+    if (differs) {
+      box.textContent =
+        'Answered differently: ' + a + ' said ' + (said.a.status ?? 'nothing') +
+        ', ' + b + ' said ' + (said.b.status ?? 'nothing') +
+        '. The pictures below are of two different answers.';
+    } else if (moved) {
+      const who = said.a.redirected ? a : b;
+      const other = said.a.redirected ? b : a;
+      const to = said.a.redirected ? said.a.path : said.b.path;
+      box.textContent =
+        who + ' was redirected to ' + to + ' and ' + other + ' was not. ' +
+        'The pictures below are of two different pages.';
+    } else {
+      box.textContent =
+        'Both sides were redirected: ' + a + ' to ' + said.a.path + ', ' + b + ' to ' + said.b.path + '.';
+    }
+
+    return box;
   }
 
   function markupView(comparison) {

@@ -8,6 +8,10 @@ export interface Site {
   pages: Record<string, string>;
   /** Anything that is not a page: images a lazy loader has to go and fetch. */
   assets?: Record<string, { type: string; body: Buffer }>;
+  /** Paths this side moves elsewhere, so one side can redirect where the other does not. */
+  redirects?: Record<string, string>;
+  /** Paths this side does not have, so the two can answer differently. */
+  missing?: string[];
 }
 
 export interface RunningSite {
@@ -26,6 +30,19 @@ export interface RunningSite {
 export async function serve(site: Site): Promise<RunningSite> {
   const server: Server = createServer((request, response) => {
     const path = new URL(request.url ?? '/', 'http://localhost').pathname.replace(/^\/+/, '');
+
+    const target = site.redirects?.[path];
+    if (target) {
+      response.writeHead(302, { location: target });
+      response.end();
+      return;
+    }
+
+    if (site.missing?.includes(path)) {
+      response.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
+      response.end('<!doctype html><html><body><h1>Not found</h1></body></html>');
+      return;
+    }
 
     const asset = site.assets?.[path];
     if (asset) {

@@ -384,6 +384,23 @@ export interface MarkupOptions {
   maxHunksInReport: number;
 }
 
+/**
+ * How a side answered a request.
+ *
+ * The landing is kept relative to that side's own base URL: the two sides
+ * differ in host by definition, so comparing absolute addresses would call
+ * every page a redirect.
+ */
+export interface Answer {
+  /** The final status, after any redirects. Null when nothing answered. */
+  status: number | null;
+  /** Where the picture was taken, in full, for the report to name. */
+  landed: string;
+  /** That landing relative to this side's base, which is what compares. */
+  path: string;
+  redirected: boolean;
+}
+
 /** One contiguous block of changed markup lines plus surrounding context. */
 export interface Hunk {
   startA: number;
@@ -485,7 +502,7 @@ export interface SideCapture {
  * established -- the markup diff, the alignment, what the page said -- rather
  * than guessed at from the pixels.
  */
-export type DiffKind = 'image' | 'text' | 'markup' | 'moved' | 'size' | 'rendering';
+export type DiffKind = 'answer' | 'image' | 'text' | 'markup' | 'moved' | 'size' | 'rendering';
 
 export type ComparisonStatus = 'pass' | 'fail' | 'error' | 'skipped' | 'timeout';
 
@@ -505,6 +522,12 @@ export interface Comparison {
   markupHunks: Hunk[] | null;
   /** What each side said while it was photographed, and what differs. */
   logs: LogSummary | null;
+  /**
+   * How each side answered, when there is anything worth saying: a status the
+   * two sides do not share, or a redirect on either of them. Null when both
+   * answered the same way from the address they were asked for.
+   */
+  answers: { a: Answer; b: Answer } | null;
   /** What kinds of difference this is, so a long list can be filtered. */
   kinds: DiffKind[];
   /** Paths relative to outDir. */

@@ -56,6 +56,7 @@ function comparison(overrides: Partial<Comparison> = {}): Comparison {
   return {
     id: 'home--desktop',
     group: null,
+    answers: null,
     scenario: 'home',
     viewport: { name: 'desktop', width: 800, height: 600, deviceScaleFactor: 1 },
     urlA: 'https://a.test/',

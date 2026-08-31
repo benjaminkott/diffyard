@@ -303,6 +303,7 @@ function abandoned(job: Job, config: Config, reason: string): Comparison {
     markup: null,
     markupHunks: null,
     logs: null,
+    answers: null,
     kinds: [],
     files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, detail: null },
     capture: null,
@@ -542,6 +543,7 @@ async function compare(
         png: outcome.png,
         pixels: outcome.pixels,
         stored: outcome.format,
+        answer: null,
         html: outcome.html,
         logs: outcome.logs,
       };
@@ -661,6 +663,30 @@ async function compare(
       const markupExceeded = config.markup.failOnDifference && markup !== null && !markup.identical;
       const logsExceeded = config.logs.failOnDifference && logs !== null && logs.seriousOnOneSide > 0;
 
+      // Two sides that answered differently were not asked the same question.
+      // A page that is 200 here and 404 there is not a page that changed, and
+      // its pixels say nothing about either -- so it fails on the answer
+      // rather than on how much of a 404 looks like a page.
+      //
+      // A redirect is recorded but does not decide anything on its own: a
+      // suite may well be pointed at addresses that both sides move, and both
+      // moving to the same place is the two sides agreeing.
+      // A side taken from an earlier run was not asked anything now, so there
+      // is nothing to hold the other to. Silence rather than a guess.
+      const answers = shotA.answer && shotB.answer ? { a: shotA.answer, b: shotB.answer } : null;
+      const answeredDifferently = answers !== null && answers.a.status !== answers.b.status;
+
+      // Whether each side moved, never where it moved to. A scenario may name
+      // a different address per side on purpose -- the same page under two
+      // names is the thing this tool exists to compare -- so the landings are
+      // not comparable and only the behaviour is. One side moving where the
+      // other stays put means they are no longer showing the two pages that
+      // were paired.
+      const movedDifferently = answers !== null && answers.a.redirected !== answers.b.redirected;
+      const worthSaying =
+        answers !== null &&
+        (answeredDifferently || movedDifferently || answers.a.redirected || answers.b.redirected);
+
       const comparison: Comparison = {
         id: job.id,
         scenario: job.scenario.name,
@@ -668,7 +694,11 @@ async function compare(
         viewport: job.viewport,
         urlA: shotA.url,
         urlB: shotB.url,
-        status: pixelsExceeded || markupExceeded || logsExceeded ? 'fail' : 'pass',
+        status:
+          answeredDifferently || movedDifferently || pixelsExceeded || markupExceeded || logsExceeded
+            ? 'fail'
+            : 'pass',
+        answers: worthSaying ? answers : null,
         threshold: job.scenario.threshold,
         diff: result,
         markup,
@@ -702,6 +732,7 @@ async function compare(
     markup: null,
     markupHunks: null,
     logs: null,
+    answers: null,
     kinds: [],
     files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, detail: null },
     capture,
@@ -728,6 +759,7 @@ function skipped(job: Job, config: Config): Comparison {
     markup: null,
     markupHunks: null,
     logs: null,
+    answers: null,
     kinds: [],
     files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, detail: null },
     capture: null,

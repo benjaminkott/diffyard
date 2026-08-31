@@ -6,7 +6,7 @@ import type { Browser, BrowserContext, Locator, Page } from 'playwright';
 import { resolveUrl } from './config.js';
 import { fold, keeps } from './logs.js';
 import { describeStep, runStep } from './steps.js';
-import type { Config, LogEntry, LogKind, Scenario, Side, SideConfig, Step, Viewport } from './types.js';
+import type { Answer, Config, LogEntry, LogKind, Scenario, Side, SideConfig, Step, Viewport } from './types.js';
 
 /** No browser to drive, and the run cannot get one. Named so the CLI can say so. */
 export class BrowserError extends Error {}
@@ -152,7 +152,18 @@ export interface CaptureRequest {
 }
 
 export interface CaptureOutcome {
+  /** What was asked for. */
   url: string;
+  /**
+   * How the side answered, and where the answer came from. Null for a side
+   * taken from an earlier run, which was not asked anything now.
+   *
+   * A page that answers 404 on one side and 200 on the other is not a page
+   * that changed, and neither is one that redirects on one side only -- but
+   * both come back as a screenshot of something, and comparing those pixels
+   * says nothing about either.
+   */
+  answer: Answer | null;
   png: Buffer;
   /** Serialised DOM at screenshot time, or null when markup diffing is off. */
   html: string | null;
@@ -208,7 +219,10 @@ export class Capturer {
 
     try {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await page.goto(url, { waitUntil: scenario.waitUntil, timeout: config.timeout });
+      const response = await page.goto(url, { waitUntil: scenario.waitUntil, timeout: config.timeout });
+
+      // Read before anything on the page can navigate away from it.
+      const answer = answerOf(response ? response.status() : null, url, page.url(), sideConfig.baseUrl);
 
       if (config.freeze) await page.addStyleTag({ content: FREEZE_CSS });
 
@@ -243,7 +257,7 @@ export class Capturer {
 
       const html = config.markup.enabled ? await page.content() : null;
 
-      return { url, png, html, logs: fold(logs, config.logs.max) };
+      return { url, answer, png, html, logs: fold(logs, config.logs.max) };
     } finally {
       await page.close();
     }
@@ -485,6 +499,33 @@ async function scrollThroughPage(page: Page, timeout: number): Promise<void> {
       await Promise.race([Promise.all(painted), left]);
     }, budget)
     .catch(() => undefined);
+}
+
+/**
+ * What came back, in the two terms both sides can be held to.
+ *
+ * The landing is kept relative to that side's own base URL, because the two
+ * sides differ in host by definition: comparing absolute addresses would call
+ * every page a redirect.
+ */
+function answerOf(status: number | null, asked: string, landed: string, baseUrl: string): Answer {
+  const relative = (address: string): string => {
+    try {
+      const base = new URL(baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`);
+      const at = new URL(address);
+      if (at.origin !== base.origin) return address;
+      const prefix = base.pathname.replace(/\/$/, '');
+      const path = at.pathname.startsWith(prefix) ? at.pathname.slice(prefix.length) : at.pathname;
+      return (path || '/') + at.search;
+    } catch {
+      return address;
+    }
+  };
+
+  const from = relative(asked);
+  const to = relative(landed);
+
+  return { status, landed, path: to, redirected: from !== to };
 }
 
 async function hideElements(page: Page, selectors: string[]): Promise<void> {

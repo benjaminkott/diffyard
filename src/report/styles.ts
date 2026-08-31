@@ -519,6 +519,12 @@ figcaption a:hover { text-decoration: underline; }
   color: var(--error); background: color-mix(in srgb, var(--error) 11%, transparent);
   font-size: var(--t-sm);
 }
+/* Said, not warned about: a redirect both sides made is the two agreeing. */
+.note {
+  margin: var(--s-2) 0 0; padding: var(--s-2) var(--s-3); border-radius: var(--r-sm);
+  color: var(--muted); background: var(--raised); border: 1px solid var(--border);
+  font-size: var(--t-sm);
+}
 .errorbox {
   margin: 0; padding: var(--s-3); border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--fail) 9%, transparent); color: var(--fail);

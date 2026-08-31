@@ -77,6 +77,7 @@ export function classify(input: Classifiable): DiffKind[] {
 const ORDER: DiffKind[] = ['image', 'text', 'markup', 'moved', 'size', 'rendering'];
 
 export const KIND_LABELS: Record<DiffKind, string> = {
+  answer: 'Answered differently',
   image: 'Image changed',
   text: 'Text changed',
   markup: 'Structure changed',
@@ -148,6 +149,14 @@ export function classifyRun(comparisons: Comparison[]): string[] {
   }
 
   for (const comparison of comparisons) {
+    // Before anything read off the pixels: two sides that answered differently
+    // were not asked the same question, and what the pictures differ by is not
+    // the answer to it.
+    if (comparison.answers && comparison.answers.a.status !== comparison.answers.b.status) {
+      comparison.kinds = ['answer'];
+      continue;
+    }
+
     comparison.kinds = classify({
       diff: comparison.diff,
       markup: comparison.markup,

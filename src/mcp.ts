@@ -150,11 +150,11 @@ Reading the results
     results.json                 every comparison with its ratio, threshold,
                                  status, markup counts and file paths
     data/                        the run in the shape the report loads it
-    shots/<scenario>--<viewport>.a.webp   .b.webp   .diff.png
+    shots/<scenario>--<viewport>.a.webp   .b.webp   .diff.webp
     shots/<scenario>--<viewport>.a.html   .b.html   .patch
 
   Read results.json for the numbers, the .patch for what changed in the DOM —
-  that usually explains a pixel difference — and open the .diff.png to see
+  that usually explains a pixel difference — and open the difference picture to see
   where on the page it sits. results.json does not carry the markup diff
   itself: on a large run that is most of the file, and the .patch is the same
   thing in the form worth reading.

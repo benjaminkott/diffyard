@@ -1,6 +1,5 @@
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
-import { indexedPng } from './indexed.js';
 import { align } from './align.js';
 import type { Edit, RowSignatures } from './align.js';
 import type { DiffRegion, DiffResult } from './types.js';
@@ -15,8 +14,14 @@ export interface DiffOptions {
 
 export interface DiffOutput {
   result: DiffResult;
-  /** Diff visualisation: unchanged pixels dimmed, changes in red. */
-  png: Buffer;
+  /**
+   * The difference picture, as pixels: unchanged ones dimmed, changes in red.
+   *
+   * Not encoded here. Comparing and storing are two decisions -- what differs,
+   * and how small the record of it has to be -- and only the second one cares
+   * which format the run was asked for. See images.ts.
+   */
+  image: PNG;
 }
 
 /** Number of bands the height is split into for the difference profile. */
@@ -51,20 +56,6 @@ const REMOVED_TINT: [number, number, number] = [190, 60, 60];
  * they are the measurement, they are read back when a side is reused, and
  * pngjs writes them larger than Chromium did anyway.
  */
-const DIFF_PNG = { deflateLevel: 9, deflateStrategy: 1, colorType: 2, inputHasAlpha: true } as const;
-
-/**
- * The difference picture, encoded.
- *
- * A palette holds it: the greys run from 191 to 255 because pixelmatch blends
- * towards white at a quarter, the tinted rows run along one line each, and the
- * marks are three colours -- under two hundred on a real page, where truecolor
- * spends three bytes a pixel saying so. A page that somehow needs more than a
- * palette can hold falls back to what it was written as before.
- */
-function encode(image: PNG): Buffer {
-  return indexedPng(image) ?? PNG.sync.write(image, DIFF_PNG);
-}
 
 /**
  * Either the encoded picture or the pixels already out of it.
@@ -104,7 +95,7 @@ export function diffImages(bufferA: Source, bufferB: Source, options: DiffOption
         aligned: null,
         unaligned: null,
       },
-      png: encode(positional.image),
+      image: positional.image,
     };
   }
 
@@ -122,7 +113,7 @@ export function diffImages(bufferA: Source, bufferB: Source, options: DiffOption
         aligned: aligned.shift.shift === 0 ? null : aligned.shift,
         unaligned: null,
       },
-      png: encode(positional.image),
+      image: positional.image,
     };
   }
 
@@ -135,7 +126,7 @@ export function diffImages(bufferA: Source, bufferB: Source, options: DiffOption
       // much of the page moved rather than changed.
       unaligned: { ratio: positional.stats.ratio, diffPixels: positional.stats.diffPixels },
     },
-    png: encode(aligned.image),
+    image: aligned.image,
   };
 }
 

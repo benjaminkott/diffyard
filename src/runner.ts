@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Capturer } from './capture.js';
 import { classifyRun } from './classify.js';
-import { forStorage, storageFormat } from './images.js';
+import { forDiff, forStorage, storageFormat } from './images.js';
 import type { Pixels } from './images.js';
 import { caseFile, withoutDetail } from './report/pool.js';
 import { slug } from './config.js';
@@ -529,7 +529,7 @@ async function compare(
 
       report('compare');
       // Pixels when the side came back as WebP, the encoded picture otherwise.
-      const { result, png } = diffImages(shotA.pixels ?? shotA.png, shotB.pixels ?? shotB.png, {
+      const { result, image } = diffImages(shotA.pixels ?? shotA.png, shotB.pixels ?? shotB.png, {
         pixelThreshold: config.pixelThreshold,
         ignoreAntialiasing: config.ignoreAntialiasing,
         alignRows: config.alignRows,
@@ -542,21 +542,23 @@ async function compare(
       // picture would have shown.
       const differs = result.diffPixels > 0;
 
-      // The screenshots go out in whatever this machine can write; the
-      // difference picture stays a PNG, because a palette already holds it in
-      // fewer bytes than WebP would and it is one file anyone can open.
+      // Comparing is done; what is left is how small the record of it has to
+      // be. The screenshots keep every pixel, because a later run reuses them
+      // and compares against them; the difference picture may lose a little,
+      // because nothing reads it back.
       const format = storageFormat(config.images);
+
       // A side already in the target format is written through untouched:
       // re-encoding a reused picture would spend the time to produce the file
       // it came from.
-      const store_ = (shot: { png: Buffer; pixels: Pixels | null; stored: 'png' | 'webp' }) =>
+      const asStored = (shot: { png: Buffer; pixels: Pixels | null; stored: 'png' | 'webp' }) =>
         shot.stored === format ? Promise.resolve(shot.png) : forStorage(shot.pixels ?? shot.png, format);
-      const [storedA, storedB] = await Promise.all([store_(shotA), store_(shotB)]);
+      const [storedA, storedB] = await Promise.all([asStored(shotA), asStored(shotB)]);
 
       const files: Comparison['files'] = {
         a: `shots/${job.id}.a.${format}`,
         b: `shots/${job.id}.b.${format}`,
-        diff: differs ? `shots/${job.id}.diff.png` : null,
+        diff: differs ? `shots/${job.id}.diff.${format}` : null,
         htmlA: null,
         htmlB: null,
         patch: null,
@@ -568,7 +570,13 @@ async function compare(
         writeFile(join(shotsDir, `${job.id}.a.${format}`), storedA),
         writeFile(join(shotsDir, `${job.id}.b.${format}`), storedB),
       ];
-      if (differs) writes.push(writeFile(join(shotsDir, `${job.id}.diff.png`), png));
+      if (differs) {
+        writes.push(
+          forDiff(image, format).then((bytes) =>
+            writeFile(join(shotsDir, `${job.id}.diff.${format}`), bytes)
+          )
+        );
+      }
 
       const logs = config.logs.enabled
         ? summarise(shotA.logs, shotB.logs, { a: originOf(shotA.url), b: originOf(shotB.url) })

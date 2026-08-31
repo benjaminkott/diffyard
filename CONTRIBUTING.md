@@ -61,7 +61,7 @@ carries a current bundle.
 | `src/reuse.ts` | Taking one side of a comparison from an earlier run |
 | `src/markup.ts` | HTML normaliser and line diff |
 | `src/indexed.ts` | Writes the difference picture with a palette |
-| `src/images.ts` | What the screenshots are stored as, and reading them back |
+| `src/images.ts` | What the pictures are stored as, and reading them back |
 | `src/runner.ts` | Runs the pairs, owns run folders and timeouts |
 | `src/report/index.ts` | Renders the report; decides what travels with it |
 | `src/report/shell.ts` | The document: chrome, controls, templates |

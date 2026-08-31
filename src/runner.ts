@@ -36,6 +36,15 @@ export interface RunEvents {
    */
   onProgress?: (state: { id: string; index: number; total: number; label: string; phase: Phase }) => void;
   onComparisonDone?: (comparison: Comparison, index: number, total: number) => void;
+  /**
+   * Asked to stop, usually by a Ctrl+C.
+   *
+   * Workers stop taking new comparisons; the ones already under way are left
+   * to finish, because a screenshot half taken is worth less than the second
+   * it costs to finish it. What was never reached is marked, so the report is
+   * whole and can be picked up where it was left.
+   */
+  signal?: AbortSignal;
 }
 
 interface Job {
@@ -82,6 +91,8 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
      */
     const worker = async (): Promise<void> => {
       for (;;) {
+        if (events.signal?.aborted) return;
+
         const index = next;
         next += 1;
         const job = jobs[index];
@@ -124,6 +135,13 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
 
     const workers = Math.max(1, Math.min(config.workers, jobs.length));
     await Promise.all(Array.from({ length: workers }, () => worker()));
+
+    // A run cut short still writes a report. What it got through is worth
+    // keeping -- twenty minutes of captures -- and what it never reached is
+    // named rather than missing, so `--unfinished` carries on from here.
+    for (const [index, job] of jobs.entries()) {
+      comparisons[index] ??= abandoned(job, config, 'Stopped before this one ran');
+    }
   } finally {
     await capturer.close();
   }

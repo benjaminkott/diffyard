@@ -89,7 +89,7 @@ after(async () => {
 let counter = 0;
 
 /** Runs a comparison from YAML, the way the CLI would. */
-async function compare(yaml: string): Promise<RunResult> {
+async function compare(yaml: string, signal?: AbortSignal): Promise<RunResult> {
   const dir = join(workDir, `run-${counter++}`);
   const file = join(dir, 'diffyard.yaml');
   rmSync(dir, { recursive: true, force: true });
@@ -105,7 +105,7 @@ async function compare(yaml: string): Promise<RunResult> {
       .replace('$OUT', join(dir, 'out'))
   );
 
-  return run(loadConfig(file));
+  return run(loadConfig(file), { signal });
 }
 
 function find(result: RunResult, scenario: string) {
@@ -113,6 +113,54 @@ function find(result: RunResult, scenario: string) {
   assert.ok(comparison, `no comparison named ${scenario}`);
   return comparison;
 }
+
+/**
+ * What a Ctrl+C leaves behind.
+ *
+ * A run cut short used to leave nothing: the process died where it stood, so
+ * twenty minutes of captures went with it. What it leaves now is a whole
+ * report -- what it got through, and a named entry for everything it did not,
+ * which is what `--unfinished` reads to carry on.
+ */
+describe('a run that is stopped', { concurrency: false }, () => {
+  it('still writes a report, with the ones it never reached named', async () => {
+    const stopping = new AbortController();
+    stopping.abort();
+
+    const result = await compare(
+      `
+compare:
+  a: $A
+  b: $B
+output:
+  dir: $OUT
+browser:
+  viewports:
+    desktop: { width: 800, height: 600 }
+scenarios:
+  - /identical
+  - /changed
+  - /moved
+`,
+      stopping.signal
+    );
+
+    assert.equal(result.comparisons.length, 3, 'every comparison has a place in the report');
+    assert.equal(result.total, 3);
+
+    for (const comparison of result.comparisons) {
+      assert.equal(comparison.status, 'timeout', comparison.id);
+      assert.match(comparison.error ?? '', /Stopped/, 'and says why it has nothing');
+      assert.equal(comparison.diff, null);
+    }
+
+    // --unfinished reads exactly this: the ones that came back with nothing.
+    const unfinished = result.comparisons.filter(
+      (entry) => entry.status === 'error' || entry.status === 'timeout'
+    );
+    assert.equal(unfinished.length, 3, 'so all three are waiting to be picked up');
+  });
+});
 
 describe('comparing two sites', { concurrency: false }, () => {
   it('reports an identical page as unchanged', async () => {

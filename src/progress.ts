@@ -125,6 +125,19 @@ export class Progress {
     this.draw();
   }
 
+  /**
+   * A line of its own above the live block.
+   *
+   * For what the run has to say while it is still going -- that it has been
+   * asked to stop, and what that means -- without it being overwritten by the
+   * next redraw.
+   */
+  note(text: string): void {
+    this.erase();
+    this.options.stream.write(`  ${text}\n`);
+    this.draw();
+  }
+
   stop(): void {
     this.active = false;
     if (this.timer) {

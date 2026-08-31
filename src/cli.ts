@@ -210,9 +210,43 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
   const size = layout(config, config.scenarios.reduce((sum, s) => sum + s.viewports.length, 0));
   const width = tableWidth(size);
 
+  /**
+   * Ctrl+C, twice over.
+   *
+   * Once: stop taking new comparisons, let the ones under way finish, and
+   * write the report with what there is. Twenty minutes of captures should
+   * not be thrown away because the answer arrived early, and the ones never
+   * reached are named in the report so `--unfinished` carries on from there.
+   *
+   * Twice: go now. The cursor is put back by hand, because the progress block
+   * hid it and nothing else will run to say otherwise.
+   */
+  const stopping = new AbortController();
+  let asked = false;
+
+  const interrupt = () => {
+    if (asked) {
+      // stop() puts the cursor back, which the progress block hid and nothing
+      // else would run to undo.
+      progress.stop();
+      process.stdout.write('\n');
+      process.exit(130);
+    }
+
+    asked = true;
+    stopping.abort();
+    progress.note(
+      paint('grey', 'Stopping — finishing what is under way. Ctrl+C again to go now.')
+    );
+  };
+
+  process.on('SIGINT', interrupt);
+  process.on('SIGTERM', interrupt);
+
   let result;
   try {
     result = await run(config, {
+      signal: stopping.signal,
       onStart: (total, info) => {
         const facts = [
           `${total} comparison${total === 1 ? '' : 's'}`,
@@ -255,6 +289,8 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
     throw error;
   } finally {
     progress.stop();
+    process.off('SIGINT', interrupt);
+    process.off('SIGTERM', interrupt);
   }
 
   // A partial run joins the report it was read from rather than replacing it.
@@ -266,6 +302,17 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
 
   write(summary(result, artifact, width, merged));
   write(updateNotice(await update));
+
+  // A run that was stopped has an answer for the part it got through, and the
+  // report says which part that was. What it does not have is a verdict on the
+  // suite, so it does not give one -- 130 is what a shell expects of a Ctrl+C.
+  if (asked) {
+    write(
+      `  ${paint('grey', 'Stopped. What was not reached is in the report; ' +
+        'carry on with')} ${paint('bold', '--unfinished')}\n\n`
+    );
+    return 130;
+  }
 
   if (values['no-fail'] === true) return 0;
   if (result.errored > 0) return 2;
@@ -880,6 +927,28 @@ function summary(
     lines.push(
       `\n  ${paint('grey', `${sides} reused for ${result.reuse.reused} of ${result.total} comparisons${again}`)}\n`
     );
+  }
+
+  // Above everything read off the pixels, because it says the pixels were not
+  // an answer to the same question. Two sides with different statuses were not
+  // asked the same thing, and the percentage between their pictures is
+  // arithmetic on that mistake.
+  const mismatched = result.comparisons.filter(
+    (entry) => entry.answers && entry.answers.a.status !== entry.answers.b.status
+  );
+
+  if (mismatched.length > 0) {
+    const a = result.config.labelA || 'A';
+    const b = result.config.labelB || 'B';
+    lines.push(`\n  ${paint('red', 'The two sides answered differently')}\n`);
+    for (const entry of mismatched.slice(0, 3)) {
+      const where = entry.group ? `${paint('grey', `${entry.group}/`)}${entry.scenario}` : entry.scenario;
+      const said = `${a} ${entry.answers?.a.status ?? '—'} · ${b} ${entry.answers?.b.status ?? '—'}`;
+      lines.push(`    ${padLeft(said, 16)}  ${where} ${paint('grey', entry.viewport.name)}\n`);
+    }
+    if (mismatched.length > 3) {
+      lines.push(`    ${paint('grey', `and ${mismatched.length - 3} more — filter the report by "Answered differently"`)}\n`);
+    }
   }
 
   // A page that broke on one side and not the other is worth a look whether

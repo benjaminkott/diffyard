@@ -1,6 +1,6 @@
 {
   "name": "diffyard",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "Visual regression testing by comparing two URLs side by side",
   "keywords": [
     "visual-regression",

@@ -12,6 +12,8 @@ export interface Site {
   redirects?: Record<string, string>;
   /** Paths this side does not have, so the two can answer differently. */
   missing?: string[];
+  /** Paths answered after this many milliseconds, for what has to be waited for. */
+  slow?: Record<string, number>;
 }
 
 export interface RunningSite {
@@ -48,6 +50,15 @@ export async function serve(site: Site): Promise<RunningSite> {
     if (asset) {
       response.writeHead(200, { 'content-type': asset.type });
       response.end(asset.body);
+      return;
+    }
+
+    const wait = site.slow?.[path];
+    if (wait !== undefined && !(request as { waited?: boolean }).waited) {
+      setTimeout(() => {
+        (request as { waited?: boolean }).waited = true;
+        server.emit('request', request, response);
+      }, wait);
       return;
     }
 

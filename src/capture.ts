@@ -665,5 +665,15 @@ async function settle(page: Page, timeout: number): Promise<void> {
       // A page that navigates or blocks scripting must not fail the capture.
     });
 
+  // Frames of their own: an embedded player, a map, a consent widget. None of
+  // them is in document.images, and a page whose video is a YouTube iframe was
+  // photographed with an empty box where the player should be. Asking
+  // Playwright rather than the page: a cross-origin frame cannot be inspected
+  // from inside the document at all, and this answers at once for a frame that
+  // has already loaded.
+  await Promise.all(
+    page.frames().map((frame) => frame.waitForLoadState('load', { timeout: budget }).catch(() => undefined))
+  );
+
   await page.waitForTimeout(Math.min(150, timeout));
 }

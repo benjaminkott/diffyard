@@ -123,6 +123,12 @@ also excuse an area that grew a shade darker, which is a change somebody made.
 A block that cannot be compared in full — where one page is longer than the
 other — is never set aside.
 
+A row one side does not have, standing on its own, is treated the same way, and
+for the same reason: measured over a real run, every one of the eighty-nine
+such runs left in it was a single row — a height difference of one pixel, drawn
+as a tinted line clean across the page. A band of them is another matter
+entirely, and is still reported at any size.
+
 The taller side then has a row inside that picture the other has not, and that
 row is drawn as the page around it and counted nowhere: it is the same picture
 at another size, which is already reported, and a red line across the page for

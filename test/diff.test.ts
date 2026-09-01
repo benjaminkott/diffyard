@@ -101,3 +101,38 @@ describe('diffImages', () => {
     assert.ok(diffImages(a, b, { ...OPTIONS, pixelThreshold: 0 }).result.diffPixels > 0);
   });
 });
+
+/**
+ * A row one side does not have, on its own.
+ *
+ * Measured across a real run: every run of such rows in it was exactly one row
+ * long, and each was drawn as a tinted line clean across the page — for a
+ * height difference of one pixel, which nobody can see. A band of them is
+ * another matter entirely: that is content one side does not have.
+ */
+describe('a single row one side does not have', () => {
+  const ALIGNED = { ...OPTIONS, alignRows: true };
+  const WHITE: [number, number, number] = [255, 255, 255];
+  const BLACK: [number, number, number] = [0, 0, 0];
+
+  it('is neither drawn nor counted', () => {
+    const a = png(40, 60, WHITE, { from: 20, to: 30, colour: BLACK });
+    const b = png(40, 59, WHITE, { from: 20, to: 30, colour: BLACK });
+
+    const { result } = diffImages(a, b, ALIGNED);
+
+    assert.equal(result.diffPixels, 0, 'nothing to report');
+    assert.equal(result.sizeMismatch, true, 'while the two heights are still what they are');
+  });
+
+  it('still reports a band of them', () => {
+    // Ten rows of content one side does not have: visible at any size, and the
+    // rule must not reach it.
+    const a = png(40, 60, WHITE, { from: 20, to: 30, colour: BLACK });
+    const b = png(40, 50, WHITE);
+
+    const { result } = diffImages(a, b, ALIGNED);
+
+    assert.ok(result.diffPixels > 0, 'a band is a difference');
+  });
+});

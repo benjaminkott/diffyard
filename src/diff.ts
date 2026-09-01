@@ -223,6 +223,24 @@ function compareAligned(
     toB: new Int32Array(Math.max(1, edits.length)).fill(-1),
   };
 
+  // How long a run of rows one side does not have is, at every row of it.
+  // Measured over a real run: every one of the eighty-nine such runs left in
+  // it was a single row, and a single row is nothing anyone can see -- while a
+  // band of them is content one side does not have and has to be reported.
+  const runs = new Int32Array(edits.length);
+  for (let index = 0; index < edits.length; ) {
+    const type = edits[index]!.type;
+    if (type === 'match' || type === 'change') {
+      index += 1;
+      continue;
+    }
+
+    let end = index;
+    while (end < edits.length && edits[end]!.type === type) end += 1;
+    for (let at = index; at < end; at += 1) runs[at] = end - index;
+    index = end;
+  }
+
   for (const [index, edit] of edits.entries()) {
     if (edit.type !== 'add') rows.fromA[edit.a] = index;
     if (edit.type !== 'add') rows.toA[index] = edit.a;
@@ -247,12 +265,12 @@ function compareAligned(
     const source = edit.type === 'add' ? b : a;
     const at = edit.type === 'add' ? edit.b : edit.a;
 
-    // A row that is only there because one side draws a picture a pixel
-    // shorter is not a difference in the page: it is that picture at another
-    // size, which is reported as exactly that. Drawn as the page around it,
-    // and counted nowhere -- a red line across the page for a row nobody can
-    // see is worse than saying nothing.
-    if (explainedByAPicture(at, rects, edit.type === 'add' ? 'b' : 'a')) {
+    // A row on its own, or one that is only there because a picture is drawn a
+    // pixel shorter: neither is a difference anybody can see, and drawing them
+    // puts a line clean across the page. Both are drawn as the page around
+    // them and counted nowhere. The size difference is still reported -- as
+    // the two heights, and as the picture it belongs to.
+    if (runs[index] === 1 || explainedByAPicture(at, rects, edit.type === 'add' ? 'b' : 'a')) {
       dimRow(source, at, image, index, width);
       continue;
     }

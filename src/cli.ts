@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -84,7 +85,7 @@ function help(): string {
     `  diffyard explore <url> ${paint('grey', '[options]')}\n` +
     `  diffyard init ${paint('grey', '[config.yaml]')}\n` +
     `  diffyard schema ${paint('grey', '[file.json]')}\n` +
-    `  diffyard serve ${paint('grey', '[run or output dir]')}\n\n` +
+    `  diffyard serve ${paint('grey', '[run, output dir or config.yaml]')}\n\n` +
     `${title('  Running a comparison')}\n` +
     flag('  -o, --out <dir>', 'where the run folder goes') +
     flag('  -f, --filter <text>', 'only scenarios whose group/name contains this') +
@@ -157,7 +158,7 @@ async function main(argv: string[]): Promise<number> {
   }
 
   if (first === 'serve') {
-    return await serveCommand(second ?? DEFAULT_OUT_DIR, values);
+    return await serveCommand(second, values);
   }
 
   if (first === 'explore') {
@@ -784,7 +785,36 @@ async function exploreCommand(url: string, values: Values): Promise<number> {
  * run. Localhost unless asked otherwise: the pages in it are from systems that
  * are not public, taken with credentials that are not public.
  */
-async function serveCommand(dir: string, values: Values): Promise<number> {
+/**
+ * What to serve, from what little was said.
+ *
+ * A run folder, the folder that holds the runs, or the config that says where
+ * they go -- because `output.dir` is a project's own convention (`var/`,
+ * `build/`, somewhere under a cache) and typing it again is the kind of thing
+ * a tool should read rather than ask for. With nothing said at all, the config
+ * lying in the working directory answers, and failing that the default.
+ */
+function whatToServe(given: string | undefined): { path: string; from: string | null } {
+  if (given !== undefined) {
+    return /\.ya?ml$/i.test(given)
+      ? { path: loadConfig(given).outDir, from: given }
+      : { path: resolve(given), from: null };
+  }
+
+  for (const name of ['diffyard.yaml', 'diffyard.config.yaml']) {
+    if (!existsSync(resolve(name))) continue;
+    try {
+      return { path: loadConfig(name).outDir, from: name };
+    } catch {
+      // A config that does not load says nothing about where runs go; the
+      // default below is a better answer than an error about YAML.
+    }
+  }
+
+  return { path: resolve(DEFAULT_OUT_DIR), from: null };
+}
+
+async function serveCommand(given: string | undefined, values: Values): Promise<number> {
   // A port somebody typed is a requirement; the default is a preference, and
   // the next free one will do.
   const asked = typeof values.port === 'string';
@@ -794,12 +824,25 @@ async function serveCommand(dir: string, values: Values): Promise<number> {
     return 2;
   }
 
-  const path = resolve(dir);
+  let where;
+  try {
+    where = whatToServe(given);
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      process.stderr.write(`\n  ${MARK.error()} ${paint('bold', 'Configuration')}\n  ${error.message}\n\n`);
+      return 2;
+    }
+    throw error;
+  }
+
+  const path = where.path;
   try {
     await readdir(path);
   } catch {
+    const because = where.from ? ` ${paint('grey', `(from ${where.from})`)}` : '';
     process.stderr.write(
-      `\n  ${MARK.error()} ${paint('bold', 'Nothing to serve')}\n  ${shortPath(path)} is not a directory.\n\n`
+      `\n  ${MARK.error()} ${paint('bold', 'Nothing to serve')}\n` +
+        `  ${shortPath(path)}${because} is not a directory. Has anything run yet?\n\n`
     );
     return 2;
   }
@@ -822,7 +865,7 @@ async function serveCommand(dir: string, values: Values): Promise<number> {
   const moved = serving.port !== port ? ` ${paint('grey', `(${port} was taken)`)}` : '';
   process.stdout.write(
     `\n  ${MARK.pass()} ${paint('bold', serving.url)}${moved}\n` +
-      `  ${paint('grey', `serving ${shortPath(path)}`)}\n` +
+      `  ${paint('grey', `serving ${shortPath(path)}${where.from ? ` — where ${where.from} puts its runs` : ''}`)}\n` +
       `  ${paint('grey', 'Ctrl+C to stop')}\n\n`
   );
 

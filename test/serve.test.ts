@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawn } from 'node:child_process';
 import { after, before, describe, it } from 'node:test';
 import { serveReport } from '../dist/serve.js';
 import { solidPng } from './helpers/server.ts';
@@ -33,6 +34,61 @@ before(async () => {
 after(async () => {
   await serving?.close();
   rmSync(workDir, { recursive: true, force: true });
+});
+
+/**
+ * What gets served, from what little is said.
+ *
+ * `output.dir` is a project's own convention -- `var/`, `build/`, somewhere
+ * under a cache -- and a tool that made the folder should not have to be told
+ * where it is a second time.
+ */
+describe('finding what to serve', () => {
+  /** The command, up to the point where it says what it is serving. */
+  const say = (argument: string): Promise<string> =>
+    new Promise((said, failed) => {
+      const cli = spawn(
+        process.execPath,
+        [join(import.meta.dirname, '..', 'bin', 'diffyard.mjs'), 'serve', argument, '--port', '0'],
+        { cwd: workDir }
+      );
+
+      let out = '';
+      const finish = () => {
+        cli.kill('SIGINT');
+        said(out);
+      };
+
+      cli.stdout.on('data', (chunk: Buffer) => {
+        out += chunk.toString();
+        if (out.includes('Ctrl+C')) finish();
+      });
+      cli.stderr.on('data', (chunk: Buffer) => { out += chunk.toString(); });
+      cli.on('error', failed);
+      cli.on('exit', () => said(out));
+      setTimeout(finish, 8000).unref();
+    });
+
+  it('reads the config rather than asking where its runs go', async () => {
+    const config = join(workDir, 'from-config.yaml');
+    writeFileSync(
+      config,
+      'compare:\n  a: https://a.test\n  b: https://b.test\n' +
+        `output:\n  dir: ${join(workDir, 'run-one')}\nscenarios:\n  - /\n`
+    );
+
+    const out = await say(config);
+
+    assert.match(out, /run-one/, 'the folder that config writes into');
+    assert.match(out, /where .*from-config\.yaml puts its runs/, 'and it says why it is there');
+  });
+
+  it('serves a folder it is handed as one', async () => {
+    const out = await say(join(workDir, 'run-one'));
+
+    assert.match(out, /run-one/);
+    assert.doesNotMatch(out, /puts its runs/, 'nothing was read to find it');
+  });
 });
 
 describe('serving a report', () => {

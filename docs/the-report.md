@@ -36,11 +36,19 @@ desk, or from a machine that did not do the run — and a folder with nine
 hundred screenshots in it is not something to send around.
 
 ```bash
-diffyard serve                     # the output directory: one link per run
-diffyard serve .diffyard-report/2026-09-01_09-12-04-a1b2c3
+diffyard serve                     # the config in this folder says where the runs are
+diffyard serve build/visual.yaml   # or name the config that knows
+diffyard serve var/reports/nightly # or the run itself
 diffyard serve --port 8080
 diffyard serve --host 0.0.0.0      # reachable from another device
 ```
+
+Where the runs go is a project's own convention — `var/`, `build/`, somewhere
+under a cache — and it is already written down in `output.dir`. So `serve`
+reads it rather than asking for it again: hand it a config and it serves that
+config's runs, hand it a folder and it serves the folder, hand it nothing and
+the config lying in the working directory answers. It says which of the three
+it did.
 
 It takes 4173, or the next port free if that one is not — the ordinary reason
 being a report already being served in another window. A port you name is used

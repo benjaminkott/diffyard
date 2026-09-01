@@ -577,7 +577,7 @@ diffyard run <config.yaml> [options]
 diffyard explore <url> [options]
 diffyard init [config.yaml]
 diffyard schema [file.json]
-diffyard serve [run or output dir]
+diffyard serve [run, output dir or config.yaml]
 ```
 
 | Flag | Effect |

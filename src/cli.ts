@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util';
 import { BrowserError } from './capture.js';
 import { formatBytes, zipDirectory } from './artifact.js';
 import { classifyRun } from './classify.js';
-import { ConfigError, loadConfig, parseSides, slug } from './config.js';
+import { ConfigError, DEFAULT_OUT_DIR, loadConfig, parseSides, slug } from './config.js';
 import { explorePage, renderExploration } from './explore.js';
 import { EXAMPLE_CONFIG } from './example.js';
 import { Progress } from './progress.js';
@@ -13,6 +13,7 @@ import { INDEX_FILE, POOL_DIR, caseFile, forDelivery, readCase, withDetail } fro
 import type { CaseDetail } from './report/pool.js';
 import { SCHEMA_FILENAME, SCHEMA_URL, schemaJson } from './schema.js';
 import { run } from './runner.js';
+import { serveReport } from './serve.js';
 import { ReuseError } from './reuse.js';
 import {
   MARK,
@@ -59,6 +60,8 @@ const OPTIONS = {
   zip: { type: 'string' as const },
   junit: { type: 'string' as const },
   'no-fail': { type: 'boolean' as const },
+  port: { type: 'string' as const },
+  host: { type: 'string' as const },
   quiet: { type: 'boolean' as const, short: 'q' },
   'no-progress': { type: 'boolean' as const },
   help: { type: 'boolean' as const, short: 'h' },
@@ -80,7 +83,8 @@ function help(): string {
     `  diffyard run <config.yaml> ${paint('grey', '[options]')}\n` +
     `  diffyard explore <url> ${paint('grey', '[options]')}\n` +
     `  diffyard init ${paint('grey', '[config.yaml]')}\n` +
-    `  diffyard schema ${paint('grey', '[file.json]')}\n\n` +
+    `  diffyard schema ${paint('grey', '[file.json]')}\n` +
+    `  diffyard serve ${paint('grey', '[run or output dir]')}\n\n` +
     `${title('  Running a comparison')}\n` +
     flag('  -o, --out <dir>', 'where the run folder goes') +
     flag('  -f, --filter <text>', 'only scenarios whose group/name contains this') +
@@ -105,6 +109,9 @@ function help(): string {
     flag('      --viewport <WxH>', 'size to inspect at, default 1440x900') +
     flag('      --compare-with <url>', 'the other side, for the config draft') +
     flag('      --insecure', 'accept self-signed certificates') +
+    `\n${title('  Serving a report')}\n` +
+    flag('      --port <n>', 'default 4173; 0 asks for a free one') +
+    flag('      --host <address>', 'default 127.0.0.1; 0.0.0.0 to reach it from another device') +
     `\n${title('  Output')}\n` +
     flag('      --self-contained', 'also write report.html with images inlined') +
     flag('      --zip <file>', 'also pack the run folder into an archive') +
@@ -147,6 +154,10 @@ async function main(argv: string[]): Promise<number> {
 
   if (first === 'schema') {
     return await writeSchema(second ?? SCHEMA_FILENAME);
+  }
+
+  if (first === 'serve') {
+    return await serveCommand(second ?? DEFAULT_OUT_DIR, values);
   }
 
   if (first === 'explore') {
@@ -765,6 +776,60 @@ async function exploreCommand(url: string, values: Values): Promise<number> {
 }
 
 /** Writes the JSON schema, so an editor can validate and complete the config. */
+/**
+ * Serves a report, and stays there until it is stopped.
+ *
+ * The report opens from a file:// URL perfectly well; what that cannot do is
+ * be opened from the phone on the desk or from a machine that did not do the
+ * run. Localhost unless asked otherwise: the pages in it are from systems that
+ * are not public, taken with credentials that are not public.
+ */
+async function serveCommand(dir: string, values: Values): Promise<number> {
+  const port = typeof values.port === 'string' ? Number(values.port) : 4173;
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    process.stderr.write(`\n  ${MARK.error()} --port takes a number from 0 to 65535\n\n`);
+    return 2;
+  }
+
+  const path = resolve(dir);
+  try {
+    await readdir(path);
+  } catch {
+    process.stderr.write(
+      `\n  ${MARK.error()} ${paint('bold', 'Nothing to serve')}\n  ${shortPath(path)} is not a directory.\n\n`
+    );
+    return 2;
+  }
+
+  let serving;
+  try {
+    serving = await serveReport(path, { port, ...(typeof values.host === 'string' ? { host: values.host } : {}) });
+  } catch (error) {
+    const message = (error as NodeJS.ErrnoException).code === 'EADDRINUSE'
+      ? `Port ${port} is taken. Try --port 0 for whichever is free.`
+      : (error as Error).message;
+    process.stderr.write(`\n  ${MARK.error()} ${paint('bold', 'Cannot serve')}\n  ${message}\n\n`);
+    return 2;
+  }
+
+  process.stdout.write(
+    `\n  ${MARK.pass()} ${paint('bold', serving.url)}\n` +
+      `  ${paint('grey', `serving ${shortPath(path)}`)}\n` +
+      `  ${paint('grey', 'Ctrl+C to stop')}\n\n`
+  );
+
+  await new Promise<void>((stopped) => {
+    const done = () => {
+      void serving.close().then(() => stopped());
+    };
+    process.once('SIGINT', done);
+    process.once('SIGTERM', done);
+  });
+
+  process.stdout.write(`  ${paint('grey', 'Stopped.')}\n`);
+  return 0;
+}
+
 async function writeSchema(file: string): Promise<number> {
   const path = resolve(file);
   await mkdir(dirname(path), { recursive: true });

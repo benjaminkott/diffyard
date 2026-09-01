@@ -577,11 +577,14 @@ diffyard run <config.yaml> [options]
 diffyard explore <url> [options]
 diffyard init [config.yaml]
 diffyard schema [file.json]
+diffyard serve [run or output dir]
 ```
 
 | Flag | Effect |
 | --- | --- |
 | `-o, --out <dir>` | Output directory, overrides `outDir` |
+| `--port <n>` | Port for `serve`; default 4173, `0` asks for a free one |
+| `--host <address>` | Interface for `serve`; default `127.0.0.1` |
 | `-f, --filter <text>` | Only scenarios whose `group/name` contains `<text>` |
 | `-g, --group <name>` | Only this group, matched exactly |
 | `--reuse <side>` | Take this side from an earlier run: `a`, `b` or `a,b` |

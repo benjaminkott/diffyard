@@ -27,6 +27,26 @@ control](screenshots/report-detail-onion.webp)
 Beside these sit **Diff**, **Slider**, **Markup** and **Console**, shown in the
 [README](../README.md#six-ways-to-look-at-one-comparison).
 
+## Over HTTP, when a file is not enough
+
+The report opens from a file on disk and is built to: the run is written beside
+it as scripts rather than JSON because `fetch` is blocked under `file://`, and
+a script tag is not. What a file cannot do is be opened from the phone on the
+desk, or from a machine that did not do the run — and a folder with nine
+hundred screenshots in it is not something to send around.
+
+```bash
+diffyard serve                     # the output directory: one link per run
+diffyard serve .diffyard-report/2026-09-01_09-12-04-a1b2c3
+diffyard serve --port 8080
+diffyard serve --host 0.0.0.0      # reachable from another device
+```
+
+Static files and nothing else: there is no state, no upload and nothing
+written. Localhost unless asked otherwise, because the pages in a report are
+from systems that are not public, taken with credentials that are not public.
+Nothing is cached, so a refresh during a run shows where the run has got to.
+
 ## The address is the view
 
 Which filter, which sort, the search box, the grouping, the comparison that is

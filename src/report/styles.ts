@@ -414,7 +414,7 @@ main { padding-block: var(--s-5) var(--s-7); display: grid; gap: var(--s-4); }
  * Flat on purpose: :has() may not contain another :has(), and a selector
  * the browser drops takes its whole rule with it, silently.
  */
-.card__body:has(> figure, > .pair, > .slider, > .onion-view) {
+.card__body:has(> figure, > .diff-view, > .pair, > .slider, > .onion-view) {
   background: var(--bg);
   border-radius: 0 0 var(--r-md) var(--r-md);
   padding-block: var(--s-4);
@@ -460,7 +460,12 @@ main { padding-block: var(--s-5) var(--s-7); display: grid; gap: var(--s-4); }
 
 figure { margin: 0; display: flex; flex-direction: column; }
 figure, .slider, .onion { max-width: var(--shot-width, 100%); }
-.card__body > figure, .card__body > .slider__box, .card__body > .onion-view { margin-inline: auto; }
+.card__body > figure, .card__body > .diff-view,
+.card__body > .slider__box, .card__body > .onion-view { margin-inline: auto; }
+/* The picture and its legend, centred together: the figure inside is already
+   held to the shot's width, and without this the pair sat against the left
+   edge because the rules above only reach a direct child of the card. */
+.card__body > .diff-view { max-width: var(--shot-width, 100%); }
 /* The control belongs to the picture, so it is as wide as the picture. */
 .card__body > .slider__box { max-width: var(--shot-width, 100%); }
 .card__body > .onion-view { max-width: var(--shot-width, 100%); }

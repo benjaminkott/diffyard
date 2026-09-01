@@ -276,7 +276,10 @@ export const SCRIPT = `
         return figure('Diff — nothing differs', src(comparison.id, 'a'), null, profile, { flat: true });
       }
 
+      // The picture and what its colours mean are one thing on the page, so
+      // they travel as one: the card centres this rather than the picture.
       const box = document.createElement('div');
+      box.className = 'diff-view';
       box.append(figure('Diff', difference, null, profile), legend(comparison));
       return box;
     }

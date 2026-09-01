@@ -208,7 +208,9 @@ code { font-family: var(--mono); font-size: var(--t-sm); }
 
 .controls {
   position: sticky; top: 0; z-index: 5;
-  display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); align-items: center;
+  /* One row, and the chips give way rather than the row: wrapping put the
+     search box on a line of its own and moved everything under it down. */
+  display: flex; flex-wrap: nowrap; gap: var(--s-2) var(--s-3); align-items: center;
   padding-block: var(--s-2);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(10px);
@@ -220,6 +222,13 @@ code { font-family: var(--mono); font-size: var(--t-sm); }
   display: inline-flex; padding: 2px; gap: 2px;
   border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--raised);
 }
+/* The chips give way before the row does. A filter row that has grown a chip
+   used to push the search box onto a line of its own, which moved everything
+   under it down; now the group scrolls in place and the bar stays one row. */
+.filters { min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+/* And the two pickers ask for what their longest option needs, which is more
+   than a reader needs to see of "Any kind". */
+.sort select { max-width: 190px; }
 .filters button, .modes button, .rerun__pick button {
   appearance: none; border: 0; border-radius: 4px; background: transparent; color: var(--muted);
   padding: 5px 10px; font: inherit; font-size: var(--t-sm); font-weight: 500;
@@ -237,13 +246,21 @@ code { font-family: var(--mono); font-size: var(--t-sm); }
 .filters button.is-warning:not(.is-active) { color: var(--fail); }
 .filters button.is-warning.is-active { background: var(--fail); color: #fff; }
 
-.sort { display: inline-flex; align-items: center; gap: var(--s-2); color: var(--muted); font-size: var(--t-sm); }
+.sort {
+  display: inline-flex; align-items: center; gap: var(--s-2); flex: 0 0 auto;
+  color: var(--muted); font-size: var(--t-sm);
+}
+/* Narrow enough that one row is no longer a kindness: let it wrap again. */
+@media (max-width: 900px) { .controls { flex-wrap: wrap; } }
 .check {
   display: inline-flex; align-items: center; gap: var(--s-2);
   color: var(--muted); font-size: var(--t-sm); cursor: pointer; user-select: none;
 }
 .check input { accent-color: var(--accent); cursor: pointer; margin: 0; }
-.search { flex: 1 1 220px; min-width: 160px; }
+/* Takes what is left of the row rather than asking for a width of its own: a
+   filter row that has grown a chip used to push the search box onto a second
+   line, which moved everything below it down by a row. */
+.search { flex: 1 1 0; min-width: 120px; }
 .search input { width: 100%; }
 
 select, input[type=search] {
@@ -370,7 +387,11 @@ select:hover, input[type=search]:hover { border-color: var(--border-strong); }
 /* The address, and the way to the page it names. No frame of its own: the bar
    it sits in is one row high, and a border would push it a few pixels taller
    than the one it replaces when a comparison is opened. */
-.opener { margin-right: var(--s-3); color: var(--muted); text-decoration: none; }
+.opener {
+  display: inline-block; max-width: min(38ch, 26vw);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom;
+  margin-right: var(--s-3); color: var(--muted); text-decoration: none;
+}
 .opener:hover { color: var(--text); text-decoration: underline; }
 .opener__side { margin-right: var(--s-1); color: var(--accent); font-weight: 650; }
 .detail__title h2 { margin: 0; font-size: var(--t-md); font-weight: 620; letter-spacing: -.005em; }

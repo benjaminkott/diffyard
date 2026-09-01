@@ -42,6 +42,11 @@ diffyard serve --port 8080
 diffyard serve --host 0.0.0.0      # reachable from another device
 ```
 
+It takes 4173, or the next port free if that one is not — the ordinary reason
+being a report already being served in another window. A port you name is used
+as given: you are pointing something else at it, and serving somewhere else
+quietly would leave you looking at the wrong thing.
+
 Static files and nothing else: there is no state, no upload and nothing
 written. Localhost unless asked otherwise, because the pages in a report are
 from systems that are not public, taken with credentials that are not public.

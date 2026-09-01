@@ -78,6 +78,27 @@ describe('serving a report', () => {
     assert.equal(answer.status, 404);
   });
 
+  it('walks on to a free port when the one it wanted is taken', async () => {
+    // The ordinary reason: a report already being served in another window.
+    const second = await serveReport(join(workDir, 'run-one'), { port: serving.port });
+
+    try {
+      assert.notEqual(second.port, serving.port, 'somewhere else');
+      assert.equal((await fetch(second.url)).status, 200, 'and serving the same report');
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('stays where it was told when a port was asked for by name', async () => {
+    // A number somebody typed is a requirement: they are pointing something
+    // else at it, and serving somewhere else quietly is worse than saying so.
+    await assert.rejects(
+      () => serveReport(join(workDir, 'run-one'), { port: serving.port, strict: true }),
+      (error: NodeJS.ErrnoException) => error.code === 'EADDRINUSE'
+    );
+  });
+
   it('lists the runs when pointed at the folder that holds them', async () => {
     const listing = await serveReport(workDir, { port: 0 });
 

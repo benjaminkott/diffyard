@@ -45,9 +45,24 @@ export interface Serving {
   close: () => Promise<void>;
 }
 
+/** Where it goes when nobody says. Kept off the ports a dev server takes. */
+export const PREFERRED_PORT = 4173;
+
+/** How many after the wanted one to try before asking for any free port. */
+const NEIGHBOURS = 10;
+
 export interface ServeOptions {
   /** 0 asks the operating system for a free one. */
   port?: number;
+  /**
+   * Whether the port is a requirement or a preference.
+   *
+   * A number somebody typed is a requirement: they are pointing something else
+   * at it, and quietly serving somewhere else would leave them looking at the
+   * wrong thing, or at nothing. The default is a preference, and a second run
+   * in another window is the ordinary reason it is taken.
+   */
+  strict?: boolean;
   /**
    * Localhost by default. A report is a page about systems that are not
    * public, taken with credentials that are not public, and putting it on
@@ -67,13 +82,7 @@ export async function serveReport(dir: string, options: ServeOptions = {}): Prom
     });
   });
 
-  await new Promise<void>((ready, failed) => {
-    server.once('error', failed);
-    server.listen(options.port ?? 0, host, () => {
-      server.off('error', failed);
-      ready();
-    });
-  });
+  await listenOn(server, host, options);
 
   const port = (server.address() as AddressInfo).port;
 
@@ -82,6 +91,48 @@ export async function serveReport(dir: string, options: ServeOptions = {}): Prom
     port,
     close: () => closeServer(server),
   };
+}
+
+/**
+ * The wanted port, then the ten after it, then whichever one is free.
+ *
+ * A port that is taken is almost always a report already being served in
+ * another window, and walking on is what someone would do by hand. Zero is
+ * asked for last rather than first so the address stays predictable: the same
+ * command in the same folder lands on the same port from one day to the next.
+ */
+async function listenOn(server: Server, host: string, options: ServeOptions): Promise<void> {
+  const wanted = options.port ?? PREFERRED_PORT;
+  const ports = options.strict || wanted === 0
+    ? [wanted]
+    : [...Array.from({ length: NEIGHBOURS + 1 }, (_, step) => wanted + step), 0];
+
+  let last: Error | null = null;
+
+  for (const port of ports) {
+    try {
+      await new Promise<void>((ready, failed) => {
+        const stumbled = (error: Error) => {
+          server.off('listening', settled);
+          failed(error);
+        };
+        const settled = () => {
+          server.off('error', stumbled);
+          ready();
+        };
+
+        server.once('error', stumbled);
+        server.once('listening', settled);
+        server.listen(port, host);
+      });
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error;
+      last = error as Error;
+    }
+  }
+
+  throw last ?? new Error('Could not listen on any port');
 }
 
 async function answer(

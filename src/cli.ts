@@ -13,7 +13,7 @@ import { INDEX_FILE, POOL_DIR, caseFile, forDelivery, readCase, withDetail } fro
 import type { CaseDetail } from './report/pool.js';
 import { SCHEMA_FILENAME, SCHEMA_URL, schemaJson } from './schema.js';
 import { run } from './runner.js';
-import { serveReport } from './serve.js';
+import { PREFERRED_PORT, serveReport } from './serve.js';
 import { ReuseError } from './reuse.js';
 import {
   MARK,
@@ -110,7 +110,7 @@ function help(): string {
     flag('      --compare-with <url>', 'the other side, for the config draft') +
     flag('      --insecure', 'accept self-signed certificates') +
     `\n${title('  Serving a report')}\n` +
-    flag('      --port <n>', 'default 4173; 0 asks for a free one') +
+    flag('      --port <n>', 'default 4173, or the next one free; a port you name is used as given') +
     flag('      --host <address>', 'default 127.0.0.1; 0.0.0.0 to reach it from another device') +
     `\n${title('  Output')}\n` +
     flag('      --self-contained', 'also write report.html with images inlined') +
@@ -785,7 +785,10 @@ async function exploreCommand(url: string, values: Values): Promise<number> {
  * are not public, taken with credentials that are not public.
  */
 async function serveCommand(dir: string, values: Values): Promise<number> {
-  const port = typeof values.port === 'string' ? Number(values.port) : 4173;
+  // A port somebody typed is a requirement; the default is a preference, and
+  // the next free one will do.
+  const asked = typeof values.port === 'string';
+  const port = asked ? Number(values.port) : PREFERRED_PORT;
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     process.stderr.write(`\n  ${MARK.error()} --port takes a number from 0 to 65535\n\n`);
     return 2;
@@ -803,7 +806,11 @@ async function serveCommand(dir: string, values: Values): Promise<number> {
 
   let serving;
   try {
-    serving = await serveReport(path, { port, ...(typeof values.host === 'string' ? { host: values.host } : {}) });
+    serving = await serveReport(path, {
+      port,
+      strict: asked,
+      ...(typeof values.host === 'string' ? { host: values.host } : {}),
+    });
   } catch (error) {
     const message = (error as NodeJS.ErrnoException).code === 'EADDRINUSE'
       ? `Port ${port} is taken. Try --port 0 for whichever is free.`
@@ -812,8 +819,9 @@ async function serveCommand(dir: string, values: Values): Promise<number> {
     return 2;
   }
 
+  const moved = serving.port !== port ? ` ${paint('grey', `(${port} was taken)`)}` : '';
   process.stdout.write(
-    `\n  ${MARK.pass()} ${paint('bold', serving.url)}\n` +
+    `\n  ${MARK.pass()} ${paint('bold', serving.url)}${moved}\n` +
       `  ${paint('grey', `serving ${shortPath(path)}`)}\n` +
       `  ${paint('grey', 'Ctrl+C to stop')}\n\n`
   );

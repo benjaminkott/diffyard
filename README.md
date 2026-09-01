@@ -583,7 +583,7 @@ diffyard serve [run or output dir]
 | Flag | Effect |
 | --- | --- |
 | `-o, --out <dir>` | Output directory, overrides `outDir` |
-| `--port <n>` | Port for `serve`; default 4173, `0` asks for a free one |
+| `--port <n>` | Port for `serve`; default 4173 or the next one free. A port you name is used as given |
 | `--host <address>` | Interface for `serve`; default `127.0.0.1` |
 | `-f, --filter <text>` | Only scenarios whose `group/name` contains `<text>` |
 | `-g, --group <name>` | Only this group, matched exactly |

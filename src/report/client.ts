@@ -41,6 +41,33 @@ export const SCRIPT = `
 
   const src = (id, side) => sources[id + ':' + side] || '';
   const pct = (ratio) => (ratio * 100).toFixed(2) + '%';
+  const smoke = () => result && result.mode === 'smoke';
+
+  /**
+   * How bad a comparison is, for ordering. A comparison is its ratio; a page
+   * on its own has none, so it is ranked by whether it failed and by how much
+   * went wrong on it -- a 404 above a clean page, three exceptions above one.
+   */
+  function rank(comparison) {
+    if (comparison.smoke) {
+      return comparison.status === 'fail' ? 1 + comparison.smoke.errors : 0;
+    }
+    return comparison.diff ? comparison.diff.ratio : -1;
+  }
+
+  /**
+   * Why a page failed, in the fewest words: the status when it was not a 2xx,
+   * the count of what went wrong on it otherwise.
+   */
+  function smokeReason(comparison) {
+    const held = comparison.smoke;
+    if (!held) return '';
+    const reasons = [];
+    if (held.answer.status === null) reasons.push('no answer');
+    else if (held.answer.status < 200 || held.answer.status >= 300) reasons.push('HTTP ' + held.answer.status);
+    if (held.errors > 0) reasons.push(held.errors + (held.errors === 1 ? ' error' : ' errors'));
+    return reasons.join(', ');
+  }
 
   /**
    * The pool: what a comparison carries that only its own detail view draws.
@@ -107,6 +134,7 @@ export const SCRIPT = `
         if (state.filter === 'markup' && (!comparison.markup || comparison.markup.identical)) return false;
         if (state.filter === 'console' && !(comparison.logs && comparison.logs.differs)) return false;
         if (state.filter === 'answer' && !(comparison.kinds || []).includes('answer')) return false;
+        if (state.filter === 'redirect' && !(comparison.smoke && comparison.smoke.answer.redirected)) return false;
         if (state.kind !== 'any' && !(comparison.kinds || []).includes(state.kind)) return false;
         if (!query) return true;
         return (
@@ -117,9 +145,7 @@ export const SCRIPT = `
       .sort((left, right) => {
         if (state.sort === 'order') return left.index - right.index;
         if (state.sort === 'name') return left.comparison.scenario.localeCompare(right.comparison.scenario);
-        const a = left.comparison.diff ? left.comparison.diff.ratio : -1;
-        const b = right.comparison.diff ? right.comparison.diff.ratio : -1;
-        return b - a;
+        return rank(right.comparison) - rank(left.comparison);
       })
       .map((entry) => entry.comparison);
   }
@@ -157,9 +183,12 @@ export const SCRIPT = `
 
     const badge = article.querySelector('.badge');
     badge.classList.add('badge--' + comparison.status);
+    const reason = smokeReason(comparison);
     badge.textContent = comparison.diff
       ? comparison.status + ' · ' + pct(comparison.diff.ratio)
-      : comparison.status;
+      : reason
+        ? comparison.status + ' · ' + reason
+        : comparison.status;
 
     if (comparison.markup && !comparison.markup.identical) {
       const pill = document.createElement('span');
@@ -184,10 +213,10 @@ export const SCRIPT = `
 
     // Before the pictures, because it decides whether they are worth looking
     // at: two sides that answered differently were not asked the same thing.
-    const said = answered(comparison);
+    const said = comparison.smoke ? landed(comparison) : answered(comparison);
     if (said) body.append(said);
 
-    if (comparison.status === 'error' || comparison.status === 'timeout' || !comparison.diff) {
+    if (comparison.status === 'error' || comparison.status === 'timeout' || (!comparison.diff && !comparison.smoke)) {
       const box = document.createElement('pre');
       box.className = comparison.error ? 'errorbox' : 'empty';
       box.textContent = comparison.error || 'Skipped by config.';
@@ -196,9 +225,64 @@ export const SCRIPT = `
     }
 
     body.append(view(comparison, state.mode));
-    body.append(stats(comparison));
+    body.append(comparison.smoke ? smokeStats(comparison) : stats(comparison));
     if (comparison.command) body.append(rerun(comparison.command));
     return article;
+  }
+
+  /**
+   * How the page answered, where that is worth a line of its own.
+   *
+   * A status that is not a 2xx is the finding, and the picture below is of
+   * whatever the server sent instead. A redirect is only reported: the site
+   * moved the page, the run followed, and the picture is of where it landed.
+   */
+  function landed(comparison) {
+    const answer = comparison.smoke.answer;
+    const status = answer.status;
+    const clean = status !== null && status >= 200 && status < 300;
+    if (clean && !answer.redirected) return null;
+
+    const box = document.createElement('p');
+    box.className = clean ? 'note' : 'warn';
+
+    if (!clean) {
+      box.textContent =
+        (status === null ? 'Nothing answered' : 'Answered ' + status) +
+        (answer.redirected ? ' after a redirect to ' + answer.path : '') +
+        '. The picture below is of what came back.';
+    } else {
+      box.textContent = 'Redirected to ' + answer.path + '. The picture below is of where it landed.';
+    }
+
+    return box;
+  }
+
+  /**
+   * What a page on its own has to say about itself: how it answered, what
+   * went wrong on it, and how long the capture took. No percentage, because
+   * there was nothing to measure it against.
+   */
+  function smokeStats(comparison) {
+    const row = document.createElement('div');
+    row.className = 'stats';
+    const held = comparison.smoke;
+    const status = held.answer.status === null ? 'none' : String(held.answer.status);
+
+    row.innerHTML =
+      '<span>Status <b>' + status + '</b></span>' +
+      (held.answer.redirected ? '<span>Landed at <b>' + escapeText(held.answer.path) + '</b></span>' : '') +
+      '<span>Errors <b>' + held.errors + '</b></span>' +
+      (comparison.logs ? '<span>Console lines <b>' + comparison.logs.a.length + '</b></span>' : '') +
+      '<span>Duration <b>' + (comparison.durationMs / 1000).toFixed(1) + 's</b></span>';
+
+    return row;
+  }
+
+  function escapeText(text) {
+    return String(text).replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[char]);
   }
 
   /**
@@ -266,6 +350,8 @@ export const SCRIPT = `
   function view(comparison, mode) {
     if (mode === 'markup') return markupView(comparison);
     if (mode === 'console') return consoleView(comparison);
+    // One picture, of one page: the only other thing to look at is the console.
+    if (comparison.smoke) return pageView(comparison);
     const profile = comparison.diff ? comparison.diff.profile : null;
 
     if (mode === 'diff') {
@@ -295,6 +381,13 @@ export const SCRIPT = `
 
     linkScrolling([...pair.querySelectorAll('.frame')]);
     return pair;
+  }
+
+  /** The page as it was captured, on its own. */
+  function pageView(comparison) {
+    const shown = figure('Page', src(comparison.id, 'a'), comparison.urlA, null, { map: false });
+    shown.title = 'The page as it was captured';
+    return shown;
   }
 
   /**
@@ -638,6 +731,33 @@ export const SCRIPT = `
     const meta = document.createElement('div');
     meta.className = 'markup-meta';
 
+    // One side has no other to be held against: what is on it is the finding,
+    // and the serious lines are what the page was judged on.
+    if (comparison.smoke) {
+      const errors = comparison.smoke.errors;
+      const pill = document.createElement('span');
+      pill.className = errors > 0 ? 'pill pill--answer' : 'pill';
+      pill.textContent = errors > 0 ? errors + (errors === 1 ? ' error' : ' errors') : 'Nothing serious';
+      const tally = document.createElement('span');
+      tally.textContent = logs.a.length + (logs.a.length === 1 ? ' line' : ' lines');
+      meta.append(pill, tally);
+      container.append(meta);
+
+      if (logs.a.length === 0) {
+        const note = document.createElement('p');
+        note.className = 'empty';
+        note.textContent = 'The page said nothing.';
+        container.append(note);
+        return container;
+      }
+
+      const one = document.createElement('div');
+      one.className = 'logs logs--one';
+      one.append(logColumn(result.config.labelA && result.config.labelA !== 'A' ? result.config.labelA : 'Console', logs.a, null));
+      container.append(one);
+      return container;
+    }
+
     const pill = document.createElement('span');
     pill.className = logs.differs ? 'pill pill--changed' : 'pill';
     pill.textContent = logs.differs
@@ -668,38 +788,46 @@ export const SCRIPT = `
       [result.config.labelA || 'A', logs.a, textsB],
       [result.config.labelB || 'B', logs.b, textsA],
     ]) {
-      const column = clone('logs-side-template');
-      column.querySelector('h3').textContent = label;
-
-      if (entries.length === 0) {
-        const quiet = document.createElement('p');
-        quiet.className = 'empty';
-        quiet.textContent = 'Nothing.';
-        column.append(quiet);
-      }
-
-      for (const entry of entries) {
-        const row = clone('logline-template');
-        if (!others.has(entry.text)) row.classList.add('logline--only');
-
-        const kind = row.querySelector('.logline__kind');
-        kind.classList.add('logline__kind--' + entry.kind);
-        kind.textContent = entry.kind;
-
-        row.querySelector('.logline__text').textContent = entry.text;
-
-        const times = row.querySelector('.logline__count');
-        if (entry.count > 1) times.textContent = '×' + entry.count;
-        else times.remove();
-
-        column.append(row);
-      }
-
-      pair.append(column);
+      pair.append(logColumn(label, entries, others));
     }
 
     container.append(pair);
     return container;
+  }
+
+  /**
+   * One side's lines. 'others' is what the other side said, so a line it did
+   * not say can be marked; null where there is no other side.
+   */
+  function logColumn(label, entries, others) {
+    const column = clone('logs-side-template');
+    column.querySelector('h3').textContent = label;
+
+    if (entries.length === 0) {
+      const quiet = document.createElement('p');
+      quiet.className = 'empty';
+      quiet.textContent = 'Nothing.';
+      column.append(quiet);
+    }
+
+    for (const entry of entries) {
+      const row = clone('logline-template');
+      if (others && !others.has(entry.text)) row.classList.add('logline--only');
+
+      const kind = row.querySelector('.logline__kind');
+      kind.classList.add('logline__kind--' + entry.kind);
+      kind.textContent = entry.kind;
+
+      row.querySelector('.logline__text').textContent = entry.text;
+
+      const times = row.querySelector('.logline__count');
+      if (entry.count > 1) times.textContent = '×' + entry.count;
+      else times.remove();
+
+      column.append(row);
+    }
+
+    return column;
   }
 
   /**
@@ -901,8 +1029,10 @@ export const SCRIPT = `
         ...(seconds ? { second: '2-digit' } : {}),
       });
 
-    const sides = ['a', 'b'].map((side) => {
-      const from = comparison.capture ? comparison.capture[side].reusedFrom : null;
+    // One moment in a smoke run, which has one side to have taken.
+    const sides = (comparison.smoke ? ['a'] : ['a', 'b']).map((side) => {
+      const held = comparison.capture ? comparison.capture[side] : null;
+      const from = held ? held.reusedFrom : null;
       return {
         at: from ? from.capturedAt : comparison.ranAt,
         label: (side === 'a' ? result.config.labelA : result.config.labelB) || side.toUpperCase(),
@@ -917,7 +1047,7 @@ export const SCRIPT = `
     // The rounded time is what gets read; the exact one is a hover away.
     span.title = sides.map((side) => side.label + ': ' + new Date(side.at).toLocaleString()).join(NEWLINE);
 
-    if (sides[0].at === sides[1].at) {
+    if (sides.length === 1 || sides[0].at === sides[1].at) {
       const value = document.createElement('b');
       value.textContent = stamp(sides[0].at, false);
       span.append(value);
@@ -1030,9 +1160,8 @@ export const SCRIPT = `
 
     const worst = new Map();
     for (const comparison of result.comparisons) {
-      const ratio = comparison.diff ? comparison.diff.ratio : -1;
       const name = qualify(comparison);
-      worst.set(name, Math.max(worst.get(name) ?? -1, ratio));
+      worst.set(name, Math.max(worst.get(name) ?? -1, rank(comparison)));
     }
 
     const order = [...new Set(shown.map(qualify))];
@@ -1098,10 +1227,10 @@ export const SCRIPT = `
     tally.className = 'group__tally';
     const pages = scenarios.length + (scenarios.length === 1 ? ' page' : ' pages');
     if (differing === 0 && broken === 0) {
-      tally.innerHTML = pages + ' · <span class="clean">all unchanged</span>';
+      tally.innerHTML = pages + ' · <span class="clean">' + (smoke() ? 'all clean' : 'all unchanged') + '</span>';
     } else {
       const parts = [];
-      if (differing > 0) parts.push('<b>' + differing + '</b> differing');
+      if (differing > 0) parts.push('<b>' + differing + '</b> ' + (smoke() ? 'failed' : 'differing'));
       if (broken > 0) parts.push(broken + ' errored');
       tally.innerHTML = pages + ' · ' + parts.join(' · ');
     }
@@ -1112,8 +1241,8 @@ export const SCRIPT = `
     if (lead) {
       const where = document.createElement('span');
       where.className = 'group__where';
-      where.textContent = short(lead.urlA) + ' → ' + short(lead.urlB);
-      where.title = lead.urlA + '  →  ' + lead.urlB;
+      where.textContent = addresses(lead, short);
+      where.title = addresses(lead, (url) => url, '  →  ');
       summary.append(where);
     }
 
@@ -1123,6 +1252,12 @@ export const SCRIPT = `
 
     block.append(summary, tiles);
     return block;
+  }
+
+  /** Where a comparison points: both addresses, or the one a smoke run has. */
+  function addresses(comparison, shorten, arrow) {
+    if (!comparison.urlB) return shorten(comparison.urlA);
+    return shorten(comparison.urlA) + (arrow || ' → ') + shorten(comparison.urlB);
   }
 
   function tile(scenario, viewports, cells, scale) {
@@ -1144,15 +1279,17 @@ export const SCRIPT = `
 
     const where = element.querySelector('.tile__where');
     if (lead && lead.urlA) {
-      where.textContent = short(lead.urlA) + ' → ' + short(lead.urlB);
-      element.title = lead.urlA + '  →  ' + lead.urlB;
+      where.textContent = addresses(lead, short);
+      element.title = addresses(lead, (url) => url, '  →  ');
     } else {
       where.remove();
     }
 
     const shot = element.querySelector('.tile__shot');
     const source = lead && lead.files ? src(lead.id, 'diff') || src(lead.id, 'a') : '';
-    const flat = Boolean(lead && lead.files && !src(lead.id, 'diff'));
+    // Greyed where side A stands in for a difference picture with nothing in
+    // it; a page on its own is the picture, and is shown as it is.
+    const flat = Boolean(lead && lead.files && !src(lead.id, 'diff') && !lead.smoke);
 
     if (source) {
       const image = document.createElement('img');
@@ -1235,6 +1372,20 @@ export const SCRIPT = `
       return row;
     }
 
+    // A page on its own has no percentage. The row says how it answered and
+    // what went wrong on it, which is the whole of what there is to say.
+    if (comparison.smoke) {
+      percent.remove();
+      bar.remove();
+      const held = comparison.smoke;
+      const parts = [held.answer.status === null ? 'no answer' : String(held.answer.status)];
+      if (held.errors > 0) parts.push(held.errors + (held.errors === 1 ? ' error' : ' errors'));
+      if (held.answer.redirected) parts.push('→ ' + held.answer.path);
+      state.textContent = parts.join(' · ');
+      row.classList.add(comparison.status === 'pass' ? 'tile__row--clean' : 'tile__row--answer');
+      return row;
+    }
+
     // A comparison whose sides answered differently has a percentage, and it
     // means nothing -- it is how much one page looks like another page. So the
     // row says what happened rather than measuring it, which is also what puts
@@ -1300,9 +1451,8 @@ export const SCRIPT = `
   function overviewOrder() {
     const worst = new Map();
     for (const comparison of result.comparisons) {
-      const ratio = comparison.diff ? comparison.diff.ratio : -1;
       const name = qualify(comparison);
-      worst.set(name, Math.max(worst.get(name) ?? -1, ratio));
+      worst.set(name, Math.max(worst.get(name) ?? -1, rank(comparison)));
     }
 
     const order = [...new Set(result.comparisons.map(qualify))];
@@ -1339,10 +1489,8 @@ export const SCRIPT = `
       // The addresses themselves, as the way to open them. Working through a
       // finding means looking at the page it is on, and the report is a file
       // on disk with no way back to the site unless it offers one.
-      where.append(
-        opener(result.config.labelA || 'A', lead.urlA),
-        opener(result.config.labelB || 'B', lead.urlB)
-      );
+      where.append(opener(smoke() ? (result.config.labelA !== 'A' && result.config.labelA) || 'Open' : result.config.labelA || 'A', lead.urlA));
+      if (lead.urlB) where.append(opener(result.config.labelB || 'B', lead.urlB));
     }
 
     const order = overviewOrder();
@@ -1583,18 +1731,24 @@ export const SCRIPT = `
         .filter(Boolean)
         .join(' · ');
 
+    // A smoke run has one side and no threshold; what it does have of the
+    // difference settings is what shaped the picture.
+    const one = !settings.b;
+
     const groups = [
-      ['Compare', [
+      [one ? 'Site' : 'Compare', [
         [settings.a.label, sideOf(settings.a)],
-        [settings.b.label, sideOf(settings.b)],
-        ['Scenarios', String(settings.scenarios)],
+        ...(one ? [] : [[settings.b.label, sideOf(settings.b)]]),
+        [one ? 'Pages' : 'Scenarios', String(settings.scenarios)],
         ['Viewports', settings.viewports.map((view) => view.name + ' ' + view.width + '×' + view.height).join(', ')],
       ]],
-      ['Difference', [
-        ['Threshold', pct(settings.threshold)],
-        ['Pixel tolerance', String(settings.pixelThreshold)],
-        ['Ignore antialiasing', yes(settings.ignoreAntialiasing)],
-        ['Align rows', yes(settings.alignRows)],
+      [one ? 'Picture' : 'Difference', [
+        ...(one ? [] : [
+          ['Threshold', pct(settings.threshold)],
+          ['Pixel tolerance', String(settings.pixelThreshold)],
+          ['Ignore antialiasing', yes(settings.ignoreAntialiasing)],
+          ['Align rows', yes(settings.alignRows)],
+        ]),
         ['Mask', listOf(settings.mask)],
         ['Hide', listOf(settings.hide)],
         ['Remove', listOf(settings.remove)],
@@ -1611,7 +1765,7 @@ export const SCRIPT = `
       ['Stability', [
         ['Workers', String(settings.workers)],
         ['Retries', String(settings.retries)],
-        ['Capture sides', settings.sequential ? 'one after another' : 'at the same time'],
+        ...(one ? [] : [['Capture sides', settings.sequential ? 'one after another' : 'at the same time']]),
         ['Freeze animation', yes(settings.freeze)],
         ['Trigger lazy loading', yes(settings.triggerLazyLoad)],
       ]],
@@ -1620,20 +1774,22 @@ export const SCRIPT = `
         ['Per comparison', ms(settings.comparisonTimeout)],
         ['Whole run', ms(settings.runTimeout)],
       ]],
-      ['Markup', [
+      ...(one ? [] : [['Markup', [
         ['Enabled', yes(settings.markup.enabled)],
         ['Fails a comparison', yes(settings.markup.failOnDifference)],
         ['Ignored attributes', listOf(settings.markup.ignoreAttributes)],
         ['Ignored selectors', listOf(settings.markup.ignoreSelectors)],
         ['Sort attributes', yes(settings.markup.sortAttributes)],
         ['Own address ignored', yes(settings.markup.ignoreBaseUrl)],
-      ]],
+      ]]]),
       ['Console', [
         ['Enabled', yes(settings.logs.enabled)],
-        ['Fails a comparison', yes(settings.logs.failOnDifference)],
+        one
+          ? ['Fails a page', settings.logs.enabled ? 'on an error, an exception or a failed request' : 'no']
+          : ['Fails a comparison', yes(settings.logs.failOnDifference)],
         ['Levels', listOf(settings.logs.levels)],
         ['Ignored', listOf(settings.logs.ignore)],
-        ['Kept per side', String(settings.logs.max)],
+        [one ? 'Kept' : 'Kept per side', String(settings.logs.max)],
       ]],
     ];
 
@@ -1714,14 +1870,23 @@ export const SCRIPT = `
      * a finding: from the overview the question is "look at all of this
      * again", and a per-case line is the wrong answer to it.
      */
+    // A smoke run opens on the page, there being no diff to open on.
+    if (smoke()) {
+      DEFAULTS.mode = 'page';
+      state.mode = 'page';
+    }
+
     if (result.commands) {
       const a = result.config.labelA || 'A';
       const b = result.config.labelB || 'B';
-      const choices = [
-        { label: 'both sides', command: result.commands.all },
-        { label: a, command: result.commands.a, title: 'Capture ' + a + ' again, and take ' + b + ' from this run' },
-        { label: b, command: result.commands.b, title: 'Capture ' + b + ' again, and take ' + a + ' from this run' },
-      ];
+      // One side has nothing to keep while the other is taken again.
+      const choices = result.commands.a && result.commands.b
+        ? [
+            { label: 'both sides', command: result.commands.all },
+            { label: a, command: result.commands.a, title: 'Capture ' + a + ' again, and take ' + b + ' from this run' },
+            { label: b, command: result.commands.b, title: 'Capture ' + b + ' again, and take ' + a + ' from this run' },
+          ]
+        : [{ label: 'every page', command: result.commands.all }];
 
       // Only where there is something to go back for. A capture that broke
       // says nothing about the page, and the rest of the report does not need

@@ -1012,3 +1012,169 @@ describe('two sides that answered differently', () => {
     await page.close();
   });
 });
+
+/**
+ * One site on its own.
+ *
+ * A smoke run has no second side, no diff and no percentage; what the report
+ * has to say per page is how it answered and what went wrong on it. The
+ * comparing views would draw a missing side, so they are not offered.
+ */
+describe('one site on its own', () => {
+  const answered = (status: number, path = '/', redirected = false) => ({
+    status,
+    landed: `https://a.test${path}`,
+    path,
+    redirected,
+  });
+
+  const one = (overrides: Partial<Comparison>): Comparison =>
+    comparison({
+      status: 'pass',
+      urlB: '',
+      diff: null,
+      markup: null,
+      markupHunks: null,
+      answers: null,
+      kinds: [],
+      files: {
+        a: 'shots/home--desktop.a.png',
+        b: null,
+        diff: null,
+        htmlA: 'shots/home--desktop.a.html',
+        htmlB: null,
+        patch: null,
+        result: 'shots/home--desktop.json',
+        pictures: null,
+        detail: 'data/home--desktop.js',
+      },
+      logs: { a: [], b: [], onlyA: 0, onlyB: 0, errorsA: 0, errorsB: 0, differs: false, seriousOnOneSide: 0 },
+      capture: { a: { fingerprint: 'aaaa1111', reusedFrom: null, recapturedBecause: null }, b: null },
+      smoke: { answer: answered(200), errors: 0 },
+      ...overrides,
+    });
+
+  const SMOKE: RunResult = {
+    ...RESULT,
+    mode: 'smoke',
+    total: 3,
+    passed: 1,
+    failed: 2,
+    errored: 0,
+    commands: { all: 'diffyard run smoke.yaml', a: null, b: null, unfinished: null },
+    settings: { ...RESULT.settings, b: null },
+    config: { ...RESULT.config, b: '', labelB: '' },
+    comparisons: [
+      one({}),
+      one({
+        id: 'about--desktop',
+        scenario: 'about',
+        urlA: 'https://a.test/about',
+        status: 'fail',
+        files: { ...one({}).files, a: 'shots/about--desktop.a.png', detail: 'data/about--desktop.js' },
+        smoke: { answer: answered(404, '/about'), errors: 0 },
+      }),
+      one({
+        id: 'top--desktop',
+        scenario: 'top',
+        urlA: 'https://a.test/top',
+        status: 'fail',
+        files: { ...one({}).files, a: 'shots/top--desktop.a.png', detail: 'data/top--desktop.js' },
+        logs: {
+          a: [
+            { kind: 'pageerror', text: 'TypeError: window.missing is undefined', source: null, count: 1 },
+            { kind: 'httperror', text: 'HTTP 404 https://a.test/hero.jpg', source: null, count: 1 },
+            { kind: 'warning', text: 'Deprecated API', source: null, count: 3 },
+          ],
+          b: [],
+          onlyA: 0,
+          onlyB: 0,
+          errorsA: 2,
+          errorsB: 0,
+          differs: false,
+          seriousOnOneSide: 0,
+        },
+        smoke: { answer: answered(200, '/top-2', true), errors: 2 },
+      }),
+    ],
+  };
+
+  it('names the one site, and offers only the views one side has', async () => {
+    const { page, errors } = await open('light', SMOKE);
+    assert.deepEqual(errors, []);
+
+    const site = (await page.locator('.topbar .urls').textContent()) ?? '';
+    assert.match(site, /a\.test/);
+    assert.doesNotMatch(site, /vs/, 'there is no second side to set it against');
+    assert.match((await page.locator('.topbar .meta').textContent()) ?? '', /3 pages/);
+
+    const modes = await page.locator('#modes button').allTextContents();
+    assert.deepEqual(modes, ['Page', 'Console']);
+    assert.equal(await page.locator('#kind').count(), 0, 'no kinds of difference to filter by');
+    await page.close();
+  });
+
+  it('says how each page answered on its tile', async () => {
+    const { page } = await open('dark', SMOKE);
+
+    const tile = (name: string) =>
+      page.locator('#tiles > .tile').filter({ has: page.locator('.tile__name', { hasText: new RegExp(`^${name}$`) }) });
+
+    assert.match((await tile('home').textContent()) ?? '', /200/);
+    assert.match((await tile('about').textContent()) ?? '', /404/);
+    assert.match((await tile('top').textContent()) ?? '', /2 errors/);
+    assert.match((await tile('top').textContent()) ?? '', /→ \/top-2/, 'and where a page moved to');
+    assert.equal(await page.locator('#tiles .tile__pct').count(), 0, 'no percentages anywhere');
+    assert.equal(await page.locator('#tiles .tile__shot img.is-flat').count(), 0, 'the pages are shown as they are');
+
+    // Failed first: the one with the most wrong on it leads.
+    const order = await page.locator('#tiles > .tile .tile__name').allTextContents();
+    assert.deepEqual(order, ['top', 'about', 'home']);
+    await page.close();
+  });
+
+  it('opens on the page itself, with the verdict beside it', async () => {
+    const { page, errors } = await open('light', SMOKE);
+
+    await page.locator('#tiles > .tile', { hasText: 'about' }).first().click();
+    await page.waitForTimeout(150);
+
+    assert.equal((await page.locator('.card .badge').textContent())?.trim(), 'fail · HTTP 404');
+    assert.match((await page.locator('.card .warn').textContent()) ?? '', /Answered 404/);
+    assert.equal(await page.locator('.card figure figcaption').first().textContent(), 'Page — https://a.test/about');
+    assert.equal(await page.locator('.card .pair').count(), 0, 'and no second picture beside it');
+    assert.match((await page.locator('.card .stats').textContent()) ?? '', /Status 404/);
+    assert.equal(await page.locator('#detail-where .opener').count(), 1, 'one address to open');
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+
+  it('shows what the page said as one column', async () => {
+    const { page } = await open('light', SMOKE);
+
+    await page.locator('#tiles > .tile', { hasText: 'top' }).first().click();
+    await page.waitForTimeout(150);
+    await page.locator('#modes button[data-mode="console"]').click();
+    await page.waitForTimeout(150);
+
+    assert.equal(await page.locator('.logs__side').count(), 1);
+    assert.equal(await page.locator('.logline').count(), 3);
+    assert.equal(await page.locator('.logline--only').count(), 0, 'nothing is "only on one side"');
+    assert.match((await page.locator('.markup-meta').textContent()) ?? '', /2 errors/);
+    await page.close();
+  });
+
+  it('offers the moved pages as a filter, and only the whole run to capture again', async () => {
+    const { page } = await open('light', SMOKE);
+
+    const chip = page.locator('.filters button[data-filter="redirect"]');
+    assert.equal(await chip.textContent(), 'Redirected (1)');
+    await chip.click();
+    await page.waitForTimeout(150);
+    assert.equal(await page.locator('#tiles > .tile').count(), 1);
+
+    assert.equal(await page.locator('#run-command .rerun__pick').count(), 0, 'no side to choose');
+    assert.equal(await page.locator('#run-command code').textContent(), 'diffyard run smoke.yaml');
+    await page.close();
+  });
+});

@@ -127,6 +127,7 @@ code { font-family: var(--mono); font-size: var(--t-sm); }
   align-items: center; color: var(--muted); font-size: var(--t-sm);
 }
 .urls code { color: var(--muted); }
+.urls__label { font-weight: 600; color: var(--text); }
 .arrow { color: var(--subtle); }
 .chip {
   display: inline-flex; align-items: center; justify-content: center;
@@ -373,6 +374,8 @@ select:hover, input[type=search]:hover { border-color: var(--border-strong); }
 /* Not the same red as a capture that failed: nothing went wrong here, the two
    sides answered two different questions, and the row says which. */
 .tile__row--answer .tile__row--state { color: var(--fail); font-weight: 600; }
+/* A page that came back clean: the status is a fact, not a finding. */
+.tile__row--clean .tile__row--state { color: var(--muted); }
 
 /* ----------------------------------------------------------------- detail */
 .detail__bar {
@@ -741,6 +744,7 @@ figcaption a:hover { text-decoration: underline; }
 .rerun button:hover { border-color: var(--accent); color: var(--accent); }
 
 .logs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-4); }
+.logs--one { grid-template-columns: 1fr; }
 .logs__side h3 {
   margin: 0 0 var(--s-2);
   font-size: var(--t-xs);

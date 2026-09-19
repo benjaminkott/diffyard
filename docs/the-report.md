@@ -27,6 +27,13 @@ control](screenshots/report-detail-onion.webp)
 Beside these sit **Diff**, **Slider**, **Markup** and **Console**, shown in the
 [README](../README.md#six-ways-to-look-at-one-comparison).
 
+A run over [one site](../README.md#one-site-on-its-own) has nothing to lay
+beside anything, so it offers two: **Page**, the screenshot as it was taken,
+and **Console**, what the page said while it loaded. The overview keeps its
+tiles; the rows under each say how the page answered — the status, what went
+wrong on it, where it was redirected to — in place of a percentage that would
+measure nothing.
+
 ## Over HTTP, when a file is not enough
 
 The report opens from a file on disk and is built to: the run is written beside

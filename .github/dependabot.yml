@@ -1,0 +1,30 @@
+# Keeps the dependencies current without anyone remembering to.
+#
+# One pull request a week per ecosystem, with the npm updates grouped: a
+# week's worth of bumps is one change to read and one CI run to trust, where
+# a pull request per package is a queue nobody works through. The runner
+# image is not pinned for the same reason -- `ubuntu-latest` moves on its
+# own, and the CI run is what says whether the move held.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "[TASK]"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "[TASK]"
+    groups:
+      dependencies:
+        patterns: ["*"]
+    ignore:
+      # The types describe the Node the tool targets -- the current LTS -- and
+      # move when that target does, not when a newer major is published.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]

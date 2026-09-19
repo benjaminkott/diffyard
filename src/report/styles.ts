@@ -338,9 +338,14 @@ select:hover, input[type=search]:hover { border-color: var(--border-strong); }
   display: block; padding: 0 var(--s-3) var(--s-2); color: var(--subtle); font-size: var(--t-xs);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/*
+ * Four by three, whatever the tile's width comes to: a fixed height read as a
+ * letterbox on a wide tile and as a strip on a narrow one. The container
+ * units are what let the picture inside be positioned against this height
+ * without it being a number anyone has to know.
+ */
 .tile__shot {
-  --tile-shot: 190px;
-  position: relative; height: var(--tile-shot); background: var(--bg);
+  position: relative; aspect-ratio: 4 / 3; container-type: size; background: var(--bg);
   border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); overflow: hidden;
 }
 .tile__shot img { display: block; position: absolute; top: 0; left: 0; width: 100%; }

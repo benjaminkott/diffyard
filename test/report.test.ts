@@ -884,6 +884,25 @@ describe('report layout', () => {
     await page.close();
   });
 
+  it('shows the picture on a tile at four by three, and lands it where it differs', async () => {
+    const { page } = await open('light');
+
+    // Whatever width the grid gives a tile, the frame keeps the ratio.
+    const frame = await page.locator('#tiles .tile__shot').first().boundingBox();
+    assert.ok(frame, 'the tile has a frame');
+    assert.ok(Math.abs(frame.width / frame.height - 4 / 3) < 0.02, `ratio is ${frame.width / frame.height}`);
+
+    // The change in the fixture sits two thirds down a tall picture, so the
+    // picture is pulled up inside the frame rather than showing its top.
+    const shifted = await page.evaluate(() => {
+      const image = document.querySelector('#tiles .tile__shot img');
+      const frame = image?.parentElement;
+      return image && frame ? image.getBoundingClientRect().top - frame.getBoundingClientRect().top : 0;
+    });
+    assert.ok(shifted < -10, `the picture was moved up by ${-shifted}px`);
+    await page.close();
+  });
+
   it('does not scroll sideways', async () => {
     const { page } = await open('light');
     const overflows = await page.evaluate(

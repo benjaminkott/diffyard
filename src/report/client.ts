@@ -1300,14 +1300,15 @@ export const SCRIPT = `
       const at = peakBand(lead && lead.diff ? lead.diff.profile : null);
       if (at !== null) {
         // Percentages on a transform resolve against the element, so this
-        // shifts the image by that share of its own height, then centres.
+        // shifts the image by that share of its own height, then centres it
+        // in the frame -- whose height is 100cqh, the frame being a container.
         //
         // Held between the two edges: a difference near the top of the page
         // would otherwise be centred by pushing the picture down, and the
         // ground the tile sits on would show above it.
-        const centred = 'calc(' + (-at * 100) + '% + var(--tile-shot) / 2)';
+        const centred = 'calc(' + (-at * 100) + '% + 50cqh)';
         image.style.transform =
-          'translateY(min(0px, max(calc(var(--tile-shot) - 100%), ' + centred + ')))';
+          'translateY(min(0px, max(calc(100cqh - 100%), ' + centred + ')))';
         shot.dataset.note = 'at ' + Math.round(at * 100) + '% of the page';
       }
 

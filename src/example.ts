@@ -10,7 +10,10 @@ export const EXAMPLE_CONFIG = `# yaml-language-server: $schema=./diffyard.schema
 compare:
   # Short form: just the URL.
   a: https://example.ddev.site
-  # Long form: everything a protected environment needs.
+  # Long form: everything a protected environment needs. Leave \`b\` out
+  # altogether to check one site on its own: every page is then captured once
+  # and judged on its answer — the status, exceptions, failed requests —
+  # instead of being compared.
   b:
     url: https://example.com
     label: live             # shown in the report and the CLI instead of "B"

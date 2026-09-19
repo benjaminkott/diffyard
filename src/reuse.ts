@@ -90,6 +90,7 @@ export interface Needs {
  */
 export function fingerprint(config: Config, scenario: Scenario, viewport: Viewport, side: Side): string {
   const sideConfig = (side === 'a' ? scenario.sideA : scenario.sideB) ?? config[side];
+  if (!sideConfig) throw new Error(`Side ${side.toUpperCase()} was asked for, but this run has no such side`);
   const path = (side === 'a' ? scenario.pathA : scenario.pathB) ?? scenario.path;
 
   const parts = {
@@ -203,7 +204,8 @@ export class ReuseStore {
   async take(id: string, side: Side, want: string, needs: Needs): Promise<ReuseOutcome> {
     const previous = this.previous.get(id);
     if (!previous || !previous.capture) return { reused: false, reason: 'unknown' };
-    if (previous.capture[side].fingerprint !== want) return { reused: false, reason: 'changed' };
+    const held = previous.capture[side];
+    if (!held || held.fingerprint !== want) return { reused: false, reason: 'changed' };
 
     const pngPath = side === 'a' ? previous.files.a : previous.files.b;
     const htmlPath = side === 'a' ? previous.files.htmlA : previous.files.htmlB;
@@ -231,7 +233,9 @@ export class ReuseStore {
         url,
         logs,
         pictures: await this.picturesOf(previous, side),
-        answer: previous.answers ? previous.answers[side] : null,
+        // A comparison records answers only where they were worth saying; a
+        // smoke run records the page's own on its verdict.
+        answer: previous.answers ? previous.answers[side] : previous.smoke?.answer ?? null,
       };
     } catch {
       return { reused: false, reason: 'missing' };

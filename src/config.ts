@@ -7,6 +7,7 @@ import type {
   LogKind,
   LogOptions,
   MarkupOptions,
+  Mode,
   RawCookie,
   Scenario,
   Side,
@@ -88,8 +89,13 @@ function normalise(raw: Record<string, unknown>, configDir: string, file: string
     throw new ConfigError('`compare` must be a mapping with the two sides');
   }
 
+  // One site or two is not a setting, it is what the file names. A config
+  // with no side B anywhere has nothing to compare against, and every page
+  // in it is photographed once and judged on its own answer.
+  const mode: Mode = namesSideB(raw) ? 'compare' : 'smoke';
+
   const a = parseSide(compare, 'a', configDir);
-  const b = parseSide(compare, 'b', configDir);
+  const b = mode === 'compare' ? parseSide(compare, 'b', configDir) : null;
 
   const globalThreshold = num(diff['threshold'], 0, 'diff.threshold');
   const rawScenarios = raw['scenarios'] ?? [];
@@ -115,7 +121,7 @@ function normalise(raw: Record<string, unknown>, configDir: string, file: string
 
   const scenarios = [
     ...rawScenarios.map((entry, index) => parseOne(entry, `scenarios[${index}]`, index, inherited, null)),
-    ...parseGroups(raw['groups'], inherited, configDir),
+    ...parseGroups(raw['groups'], inherited, configDir, mode),
   ];
 
   if (scenarios.length === 0) {
@@ -131,11 +137,34 @@ function normalise(raw: Record<string, unknown>, configDir: string, file: string
     names.add(full);
 
     assertAddressable(scenario, 'a', scenario.sideA ?? a);
-    assertAddressable(scenario, 'b', scenario.sideB ?? b);
+    if (b) assertAddressable(scenario, 'b', scenario.sideB ?? b);
+  }
+
+  const beforeEach = parseBeforeEach(raw['beforeEach']);
+  const reuseSides = parseSides(reuse['side'] ?? reuse['sides'], 'reuse.side');
+
+  // Said here, at the option that names the side, rather than mid-run when
+  // there is nothing to take: a smoke run has no side B to reuse, and no
+  // side B for a notice to be limited to.
+  if (b === null) {
+    if (reuseSides.includes('b')) {
+      throw new ConfigError(
+        '`reuse.side` names side B, but this config has no side B: without `compare.b` ' +
+          'every page is checked on its own. Reuse `a`, or add the other site.'
+      );
+    }
+    const limited = beforeEach.find((entry) => entry.side === 'b');
+    if (limited) {
+      throw new ConfigError(
+        `beforeEach "${limited.name}" is limited to side B, but this config has no side B: ` +
+          'without `compare.b` every page is checked on its own. Drop `side`, or add the other site.'
+      );
+    }
   }
 
   return {
     file,
+    mode,
     a,
     b,
     // Results belong to the project the run happens in, not to wherever the
@@ -146,7 +175,7 @@ function normalise(raw: Record<string, unknown>, configDir: string, file: string
     images: enumValue(output['images'], ['png', 'webp'] as const, 'webp', 'output.images'),
     viewports,
     scenarios,
-    beforeEach: parseBeforeEach(raw['beforeEach']),
+    beforeEach,
     pixelThreshold: num(diff['pixelThreshold'], 0.1, 'diff.pixelThreshold'),
     threshold: globalThreshold,
     ignoreAntialiasing: bool(diff['ignoreAntialiasing'], true, 'diff.ignoreAntialiasing'),
@@ -178,12 +207,35 @@ function normalise(raw: Record<string, unknown>, configDir: string, file: string
     markup: parseMarkup(raw['markup']),
     logs: parseLogs(raw['logs'] ?? raw['console']),
     reuse: {
-      sides: parseSides(reuse['side'] ?? reuse['sides'], 'reuse.side'),
+      sides: reuseSides,
       from: str(reuse['from'], 'latest', 'reuse.from'),
       maxAge: parseDuration(reuse['maxAge'], 24 * 60 * 60 * 1000, 'reuse.maxAge'),
     },
     reportTitle: str(output['title'], 'diffyard report', 'output.title'),
   };
+}
+
+/**
+ * Whether the file names a side B anywhere: the compare block, a group's own
+ * compare block, or a scenario's `b:`. Without one there is nothing to hold
+ * the pages against, and the run is a smoke run over the one site.
+ *
+ * Read off the raw file rather than the parsed scenarios because the parser
+ * needs to know first: a scenario is parsed differently when there is no
+ * other side for it to have an address on.
+ */
+function namesSideB(raw: Record<string, unknown>): boolean {
+  const has = (block: unknown): boolean =>
+    isRecord(block) && block['b'] !== undefined && block['b'] !== null;
+  const among = (list: unknown): boolean => Array.isArray(list) && list.some(has);
+
+  if (has(raw['compare']) || among(raw['scenarios'])) return true;
+
+  const groups = raw['groups'];
+  return (
+    Array.isArray(groups) &&
+    groups.some((group) => isRecord(group) && (has(group['compare']) || among(group['scenarios'])))
+  );
 }
 
 /**
@@ -357,7 +409,7 @@ function parseOne(
  * it does not set — viewports, thresholds, masks — it inherits from the top
  * level, so a group only says what makes it different.
  */
-function parseGroups(value: unknown, inherited: Inherited, configDir: string): Scenario[] {
+function parseGroups(value: unknown, inherited: Inherited, configDir: string, mode: Mode): Scenario[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) {
     throw new ConfigError('`groups` must be a list');
@@ -385,7 +437,10 @@ function parseGroups(value: unknown, inherited: Inherited, configDir: string): S
     }
 
     const sides = compare
-      ? { a: parseSide(compare, 'a', configDir), b: parseSide(compare, 'b', configDir) }
+      ? {
+          a: parseSide(compare, 'a', configDir),
+          b: mode === 'compare' ? parseSide(compare, 'b', configDir) : null,
+        }
       : { a: null, b: null };
 
     const diff = block(entry, 'diff', at);

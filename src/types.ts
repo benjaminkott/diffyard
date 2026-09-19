@@ -7,6 +7,20 @@
 
 export type Side = 'a' | 'b';
 
+/**
+ * What a run is for.
+ *
+ * `compare` is the tool's job: two URLs, every page photographed on both and
+ * the two held against each other. `smoke` is the same walk over one site --
+ * every page photographed once and judged on its own answer: did it come back
+ * 2xx, did a script throw, did a request fail. There is nothing to diff, so a
+ * page passes or fails on what it said rather than on how much it changed.
+ *
+ * Decided by the config rather than by a flag: a config that names no side B
+ * anywhere has one site to look at, and that is the whole difference.
+ */
+export type Mode = 'compare' | 'smoke';
+
 /** A single browser viewport a scenario is captured in. */
 export interface Viewport {
   name: string;
@@ -79,7 +93,8 @@ export interface SideConfig {
  */
 export interface RunSettings {
   a: SideSettings;
-  b: SideSettings;
+  /** Null in a smoke run, which has only the one side. */
+  b: SideSettings | null;
   viewports: Viewport[];
   /** How many scenarios the config resolved to; the comparisons are the list. */
   scenarios: number;
@@ -185,8 +200,10 @@ export interface Scenario {
 export interface Config {
   /** The config file as the caller named it, so a printed command can be run. */
   file: string;
+  mode: Mode;
   a: SideConfig;
-  b: SideConfig;
+  /** Null in a smoke run: there is no second site to hold the first against. */
+  b: SideConfig | null;
   /** Base directory. Each run gets its own folder inside it unless disabled. */
   outDir: string;
   /** Create a timestamped sub-folder per run inside outDir. */
@@ -558,6 +575,25 @@ export type DiffKind =
   | 'size'
   | 'rendering';
 
+/**
+ * What one page came back with, in a smoke run.
+ *
+ * The verdict is read off two things the capture already records: how the
+ * page answered, and what it said while it loaded. A 2xx with nothing serious
+ * in the console is a page that works; anything else is a page to go and look
+ * at. Redirects are noted, not judged -- a site is allowed to move a page, and
+ * the screenshot is of wherever it landed.
+ */
+export interface SmokeResult {
+  answer: Answer;
+  /**
+   * Lines that mean something is broken: console errors, uncaught exceptions,
+   * requests that failed or came back an error. The lines themselves are in
+   * `logs.a`; this is what the verdict counted.
+   */
+  errors: number;
+}
+
 export type ComparisonStatus = 'pass' | 'fail' | 'error' | 'skipped' | 'timeout';
 
 export interface Comparison {
@@ -567,9 +603,11 @@ export interface Comparison {
   group: string | null;
   viewport: Viewport;
   urlA: string;
+  /** Empty in a smoke run, which has no second address. */
   urlB: string;
   status: ComparisonStatus;
   threshold: number;
+  /** Null when nothing was compared: a capture that broke, or a smoke run. */
   diff: DiffResult | null;
   markup: MarkupResult | null;
   /** Report-embedded excerpt of the markup diff; the full patch is on disk. */
@@ -584,6 +622,8 @@ export interface Comparison {
   answers: { a: Answer; b: Answer } | null;
   /** What kinds of difference this is, so a long list can be filtered. */
   kinds: DiffKind[];
+  /** The page's own verdict, in a smoke run. Null in a comparison. */
+  smoke: SmokeResult | null;
   /** Paths relative to outDir. */
   files: {
     a: string | null;
@@ -614,8 +654,11 @@ export interface Comparison {
      */
     detail: string | null;
   };
-  /** How each side was obtained; null when the comparison never ran. */
-  capture: { a: SideCapture; b: SideCapture } | null;
+  /**
+   * How each side was obtained; null when the comparison never ran. Side B is
+   * null in a smoke run, which never asked for one.
+   */
+  capture: { a: SideCapture; b: SideCapture | null } | null;
   /**
    * What to run to do this one comparison again, into this same report.
    *
@@ -631,6 +674,7 @@ export interface Comparison {
 }
 
 export interface RunResult {
+  mode: Mode;
   startedAt: string;
   finishedAt: string;
   durationMs: number;
@@ -673,10 +717,11 @@ export interface RunResult {
      * Side A captured again, side B taken from this run, and the other way
      * round. When only one side moved -- a deployment on the new system, a
      * content change on the old -- capturing the other again is half a run
-     * spent proving it did not change.
+     * spent proving it did not change. Null in a smoke run, which has no
+     * other side to keep.
      */
-    a: string;
-    b: string;
+    a: string | null;
+    b: string | null;
     /**
      * Only the comparisons that came back with nothing, or null when every
      * one of them came back with something.
@@ -702,6 +747,7 @@ export interface RunResult {
     /** The config file as the caller named it. */
     file: string;
     a: string;
+    /** Empty in a smoke run, and so is the label. */
     b: string;
     labelA: string;
     labelB: string;

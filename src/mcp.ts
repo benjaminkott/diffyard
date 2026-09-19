@@ -105,6 +105,13 @@ Commands
       Flags: --filter <text>, --group <name>, --run-id <name>, --out <dir>,
       --threshold <0..1>, --workers <n>, --headed, --junit <file>.
 
+  ${cli} run diffyard.yaml            (a config with no compare.b)
+      Checks one site instead of comparing two: every page is captured once
+      and judged on its own answer -- a status that is not 2xx, an uncaught
+      exception, a failed request or a console error fails it. Same flags,
+      same report, same exit codes. Use it to smoke-test a deployment when
+      there is nothing to hold it against.
+
   ${cli} run diffyard.yaml --reuse b
       Takes side B from the last run instead of photographing it again. While
       a regression is being fixed only the local side moves, and the reference
@@ -119,7 +126,7 @@ Commands
 Config in brief
   compare:                       # optional base URLs for the two sides
     a: https://example.ddev.site
-    b: https://example.com
+    b: https://example.com       # leave out to check side A on its own
   browser:
     viewports:
       desktop: { width: 1440, height: 900 }

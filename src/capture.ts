@@ -284,6 +284,7 @@ export class Capturer {
     // A grouped scenario carries the site it belongs to; everything else uses
     // the run's own sides.
     const sideConfig = (side === 'a' ? scenario.sideA : scenario.sideB) ?? config[side];
+    if (!sideConfig) throw new Error(`Side ${side.toUpperCase()} was asked for, but this run has no such side`);
     const url = resolveUrl(sideConfig.baseUrl, path);
 
     const contextKey = `${side}:${viewport.deviceScaleFactor}:${sideConfig.baseUrl}`;

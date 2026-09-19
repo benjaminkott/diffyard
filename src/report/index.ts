@@ -82,8 +82,12 @@ function settingsYaml(result: RunResult): string {
     ...(from.storageState ? { storageState: from.storageState } : {}),
   });
 
+  // A smoke run has one side, and no threshold decided anything on it; what
+  // is left of `diff` is what shaped the picture.
+  const smoke = result.mode === 'smoke';
+
   const document = {
-    compare: { a: side(settings.a), b: side(settings.b) },
+    compare: settings.b ? { a: side(settings.a), b: side(settings.b) } : { a: side(settings.a) },
     browser: {
       engine: settings.browser,
       headless: settings.headless,
@@ -101,10 +105,14 @@ function settingsYaml(result: RunResult): string {
       run: settings.runTimeout,
     },
     diff: {
-      threshold: settings.threshold,
-      pixelThreshold: settings.pixelThreshold,
-      ignoreAntialiasing: settings.ignoreAntialiasing,
-      alignRows: settings.alignRows,
+      ...(smoke
+        ? {}
+        : {
+            threshold: settings.threshold,
+            pixelThreshold: settings.pixelThreshold,
+            ignoreAntialiasing: settings.ignoreAntialiasing,
+            alignRows: settings.alignRows,
+          }),
       mask: settings.mask,
       hide: settings.hide,
       remove: settings.remove,

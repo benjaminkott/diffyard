@@ -2,16 +2,18 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Capturer } from './capture.js';
+import type { CaptureOutcome } from './capture.js';
 import { classifyRun } from './classify.js';
 import { forDiff, forStorage, formatForPair, toPixels } from './images.js';
 import type { Pixels } from './images.js';
 import { caseFile, withoutDetail } from './report/pool.js';
 import { slug } from './config.js';
 import { diffImages } from './diff.js';
-import { originOf, summarise } from './logs.js';
-import { diffMarkup } from './markup.js';
+import { originOf, summarise, summariseOne } from './logs.js';
+import { diffMarkup, normalise } from './markup.js';
 import { fingerprint, MISS_REASON, ReuseStore, type ReuseSource } from './reuse.js';
 import type {
+  Answer,
   Comparison,
   Config,
   MarkupResult,
@@ -238,6 +240,7 @@ function resultOf(
   const now = new Date();
 
   return {
+    mode: config.mode,
     commonMarkup: common,
     commands: runCommandsFor(config, runId, comparisons),
     startedAt: startedAt.toISOString(),
@@ -261,16 +264,16 @@ function resultOf(
           recaptured: comparisons.filter(
             (entry) =>
               entry.capture &&
-              config.reuse.sides.some((side) => entry.capture?.[side].recapturedBecause !== null)
+              config.reuse.sides.some((side) => (entry.capture?.[side]?.recapturedBecause ?? null) !== null)
           ).length,
         }
       : null,
     config: {
       file: config.file,
       a: config.a.baseUrl,
-      b: config.b.baseUrl,
+      b: config.b?.baseUrl ?? '',
       labelA: config.a.label,
-      labelB: config.b.label,
+      labelB: config.b?.label ?? '',
       browser: config.browser,
       outDir: config.outDir,
     },
@@ -299,7 +302,7 @@ export function settingsOf(config: Config): RunSettings {
 
   return {
     a: side(config.a),
-    b: side(config.b),
+    b: config.b ? side(config.b) : null,
     viewports: config.viewports,
     scenarios: config.scenarios.length,
     beforeEach: config.beforeEach.map((entry) => ({
@@ -385,7 +388,7 @@ function abandoned(job: Job, config: Config, reason: string): Comparison {
     group: job.scenario.group,
     viewport: job.viewport,
     urlA: config.a.baseUrl,
-    urlB: config.b.baseUrl,
+    urlB: config.b?.baseUrl ?? '',
     status: 'timeout',
     threshold: job.scenario.threshold,
     diff: null,
@@ -394,7 +397,8 @@ function abandoned(job: Job, config: Config, reason: string): Comparison {
     logs: null,
     answers: null,
     kinds: [],
-    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, pictures: null, detail: null },
+    smoke: null,
+    files: noFiles(),
     capture: null,
     error: reason,
     durationMs: 0,
@@ -474,7 +478,7 @@ function runName(config: Config, date: Date): string {
       [
         date.toISOString(),
         config.a.baseUrl,
-        config.b.baseUrl,
+        config.b?.baseUrl ?? '',
         config.browser,
         config.scenarios.map((scenario) => scenario.name).join(','),
         String(process.pid),
@@ -528,12 +532,14 @@ export function runCommandsFor(
 ): RunResult['commands'] {
   const keeping = (side: Side) => [`--reuse ${side}`, `--reuse-from ${runId}`];
   const unfinished = comparisons.some((entry) => entry.status === 'error' || entry.status === 'timeout');
+  // A smoke run has one side, and capturing it again is the whole run.
+  const twoSided = config.mode === 'compare';
 
   return {
     all: line(config, runId, []),
     // To capture A again, B is the side that is kept.
-    a: line(config, runId, keeping('b'), false),
-    b: line(config, runId, keeping('a'), false),
+    a: twoSided ? line(config, runId, keeping('b'), false) : null,
+    b: twoSided ? line(config, runId, keeping('a'), false) : null,
     // It reads the report to find them, so it has to name it. A config that
     // fixes output.runId has, and one that does not needs --into.
     unfinished: unfinished
@@ -566,7 +572,7 @@ function quote(value: string): string {
 /** The sides of a comparison that came from an earlier run. */
 export function reusedSides(comparison: Comparison): Side[] {
   if (!comparison.capture) return [];
-  return (['a', 'b'] as const).filter((side) => comparison.capture?.[side].reusedFrom);
+  return (['a', 'b'] as const).filter((side) => comparison.capture?.[side]?.reusedFrom);
 }
 
 /** How a job is named in progress and log lines. */
@@ -589,7 +595,88 @@ function buildJobs(config: Config): Job[] {
   );
 }
 
-async function compare(
+/** A side as the comparison holds it: what came back, and what it is kept as. */
+interface Shot extends CaptureOutcome {
+  pixels: Pixels | null;
+  stored: 'png' | 'webp';
+}
+
+/**
+ * One side, from the earlier run when it still applies and from the browser
+ * otherwise. A shot that no longer matches the config is taken again and
+ * says so, rather than being used because it happens to be there.
+ */
+async function obtain(
+  capturer: Capturer,
+  config: Config,
+  job: Job,
+  store: ReuseStore | null,
+  held: SideCapture,
+  side: Side
+): Promise<Shot> {
+  const request = { scenario: job.scenario, viewport: job.viewport, side };
+  if (!store || !config.reuse.sides.includes(side)) {
+    const shot = await capturer.capture(request);
+    return { ...shot, pixels: null, stored: 'png' };
+  }
+
+  const outcome = await store.take(job.id, side, held.fingerprint, {
+    html: config.markup.enabled,
+    logs: config.logs.enabled,
+  });
+
+  if (outcome.reused) {
+    held.reusedFrom = { runId: store.source.runId, capturedAt: store.source.capturedAt };
+    held.recapturedBecause = null;
+    return {
+      url: outcome.url,
+      png: outcome.png,
+      pixels: outcome.pixels,
+      stored: outcome.format,
+      // Kept with the earlier run: a re-scored run must not lose the finding
+      // that the two sides were not asked the same question.
+      answer: outcome.answer,
+      html: outcome.html,
+      // Kept with the earlier run, so a side reused from it is still judged
+      // on where its pictures are rather than losing them with the capture.
+      pictures: outcome.pictures,
+      logs: outcome.logs,
+    };
+  }
+
+  held.reusedFrom = null;
+  held.recapturedBecause = MISS_REASON[outcome.reason];
+  const shot = await capturer.capture(request);
+  return { ...shot, pixels: null, stored: 'png' };
+}
+
+/** The shot as it is kept, re-encoded only when the format asks for it. */
+async function asStored(shot: Shot, format: 'png' | 'webp'): Promise<Buffer> {
+  // A side already in the target format is written through untouched:
+  // re-encoding a reused picture would both spend the time to produce the
+  // file it came from and put it through a second generation of the
+  // encoder, which the side captured now has not been through.
+  return shot.stored === format ? shot.png : forStorage(shot.pixels ?? shot.png, format);
+}
+
+/** Nothing on disk: the shape a comparison that never got that far has. */
+function noFiles(): Comparison['files'] {
+  return { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, pictures: null, detail: null };
+}
+
+/**
+ * One page on its own, photographed and judged on what it said.
+ *
+ * Not a comparison with half of it missing: there is no threshold and no
+ * diff. A page passes when it answered 2xx and nothing serious was logged
+ * while it loaded, and fails otherwise -- a 404, a script that threw, a
+ * request that never came back. A redirect is noted and not judged; a site
+ * is allowed to move a page, and the picture is of wherever it landed.
+ *
+ * The screenshot and the document are written the way a compared side is,
+ * so a later comparison can take this run as its reference.
+ */
+async function smoke(
   capturer: Capturer,
   config: Config,
   job: Job,
@@ -602,51 +689,144 @@ async function compare(
   const command = commandFor(config, runId, job.id);
   const attempts = config.retries + 1;
   let lastError: Error | null = null;
+  const capture: { a: SideCapture; b: null } = {
+    a: { fingerprint: fingerprint(config, job.scenario, job.viewport, 'a'), reusedFrom: null, recapturedBecause: null },
+    b: null,
+  };
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      report('capture');
+      const shot = await obtain(capturer, config, job, store, capture.a, 'a');
+      report('compare');
+
+      const format = await formatForPair(config.images, [shot.pixels ?? shot.png]);
+      const stored = await asStored(shot, format);
+
+      const files: Comparison['files'] = {
+        ...noFiles(),
+        a: `shots/${job.id}.a.${format}`,
+        result: `shots/${job.id}.json`,
+        pictures: shot.pictures.length > 0 ? `shots/${job.id}.pictures.json` : null,
+        detail: caseFile(job.id),
+      };
+
+      const writes: Promise<unknown>[] = [writeFile(join(shotsDir, `${job.id}.a.${format}`), stored)];
+      if (files.pictures) {
+        writes.push(
+          writeFile(join(shotsDir, `${job.id}.pictures.json`), `${JSON.stringify({ a: shot.pictures, b: [] })}\n`)
+        );
+      }
+
+      // The document as a compared side keeps it -- re-indented, every
+      // attribute still there -- so it reads the same whichever run wrote it.
+      if (config.markup.enabled && shot.html !== null) {
+        files.htmlA = `shots/${job.id}.a.html`;
+        const keepAll = { ...config.markup, ignoreAttributes: [], ignoreSelectors: [] };
+        writes.push(writeFile(join(shotsDir, `${job.id}.a.html`), normalise(shot.html, keepAll)));
+      }
+
+      await Promise.all(writes);
+
+      // A reused side was not asked anything now, and a run that re-scores an
+      // earlier one keeps that run's answer. Neither leaves a page unjudged:
+      // what no answer at all means is that nothing came back, which fails.
+      const answer: Answer = shot.answer ?? {
+        status: null,
+        landed: shot.url,
+        path: '',
+        redirected: false,
+      };
+      const clean = answer.status !== null && answer.status >= 200 && answer.status < 300;
+
+      // The document's own error status is the answer, and is judged as one;
+      // the line the browser logged for it would count the same 404 twice.
+      const said = shot.logs.filter((entry) => !(entry.kind === 'httperror' && entry.source === answer.landed));
+      const logs = config.logs.enabled ? summariseOne(said) : null;
+      const errors = logs?.errorsA ?? 0;
+
+      return {
+        id: job.id,
+        scenario: job.scenario.name,
+        group: job.scenario.group,
+        viewport: job.viewport,
+        urlA: shot.url,
+        urlB: '',
+        status: clean && errors === 0 ? 'pass' : 'fail',
+        answers: null,
+        threshold: job.scenario.threshold,
+        diff: null,
+        markup: null,
+        markupHunks: null,
+        logs,
+        kinds: [],
+        smoke: { answer, errors },
+        files,
+        capture,
+        command,
+        ranAt: new Date().toISOString(),
+        error: null,
+        durationMs: Date.now() - started,
+      };
+    } catch (error) {
+      lastError = error as Error;
+    }
+  }
+
+  return broken(job, capture, command, lastError, started);
+}
+
+/** A comparison whose capture failed every attempt it was given. */
+function broken(
+  job: Job,
+  capture: Comparison['capture'],
+  command: string,
+  lastError: Error | null,
+  started: number
+): Comparison {
+  return {
+    id: job.id,
+    scenario: job.scenario.name,
+    group: job.scenario.group,
+    viewport: job.viewport,
+    urlA: '',
+    urlB: '',
+    status: 'error',
+    threshold: job.scenario.threshold,
+    diff: null,
+    markup: null,
+    markupHunks: null,
+    logs: null,
+    answers: null,
+    kinds: [],
+    smoke: null,
+    files: noFiles(),
+    capture,
+    command,
+    ranAt: new Date().toISOString(),
+    error: lastError?.message ?? 'Unknown error',
+    durationMs: Date.now() - started,
+  };
+}
+
+async function compare(
+  capturer: Capturer,
+  config: Config,
+  job: Job,
+  shotsDir: string,
+  report: (phase: Phase) => void,
+  store: ReuseStore | null,
+  runId: string
+): Promise<Comparison> {
+  if (config.mode === 'smoke') return smoke(capturer, config, job, shotsDir, report, store, runId);
+
+  const started = Date.now();
+  const command = commandFor(config, runId, job.id);
+  const attempts = config.retries + 1;
+  let lastError: Error | null = null;
   const capture: { a: SideCapture; b: SideCapture } = {
     a: { fingerprint: fingerprint(config, job.scenario, job.viewport, 'a'), reusedFrom: null, recapturedBecause: null },
     b: { fingerprint: fingerprint(config, job.scenario, job.viewport, 'b'), reusedFrom: null, recapturedBecause: null },
-  };
-
-  /**
-   * One side, from the earlier run when it still applies and from the browser
-   * otherwise. A shot that no longer matches the config is taken again and
-   * says so, rather than being used because it happens to be there.
-   */
-  const obtain = async (side: Side) => {
-    const request = { scenario: job.scenario, viewport: job.viewport, side };
-    if (!store || !config.reuse.sides.includes(side)) {
-      const shot = await capturer.capture(request);
-      return { ...shot, pixels: null, stored: 'png' as const };
-    }
-
-    const outcome = await store.take(job.id, side, capture[side].fingerprint, {
-      html: config.markup.enabled,
-      logs: config.logs.enabled,
-    });
-
-    if (outcome.reused) {
-      capture[side].reusedFrom = { runId: store.source.runId, capturedAt: store.source.capturedAt };
-      capture[side].recapturedBecause = null;
-      return {
-        url: outcome.url,
-        png: outcome.png,
-        pixels: outcome.pixels,
-        stored: outcome.format,
-        // Kept with the earlier run: a re-scored run must not lose the finding
-        // that the two sides were not asked the same question.
-        answer: outcome.answer,
-        html: outcome.html,
-        // Kept with the earlier run, so a side reused from it is still judged
-        // on where its pictures are rather than losing them with the capture.
-        pictures: outcome.pictures,
-        logs: outcome.logs,
-      };
-    }
-
-    capture[side].reusedFrom = null;
-    capture[side].recapturedBecause = MISS_REASON[outcome.reason];
-    const shot = await capturer.capture(request);
-    return { ...shot, pixels: null, stored: 'png' as const };
   };
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -655,9 +835,10 @@ async function compare(
       // comparison: the two pages meet the same machine load instead of one
       // being captured on an idle box and the other behind it.
       report('capture');
+      const take = (side: Side) => obtain(capturer, config, job, store, capture[side], side);
       const [shotA, shotB] = config.sequential
-        ? [await obtain('a'), await obtain('b')]
-        : await Promise.all([obtain('a'), obtain('b')]);
+        ? [await take('a'), await take('b')]
+        : await Promise.all([take('a'), take('b')]);
 
       report('compare');
 
@@ -669,13 +850,7 @@ async function compare(
         shotB.pixels ?? shotB.png,
       ]);
 
-      // A side already in the target format is written through untouched:
-      // re-encoding a reused picture would both spend the time to produce the
-      // file it came from and put it through a second generation of the
-      // encoder, which the side captured now has not been through.
-      const asStored = (shot: { png: Buffer; pixels: Pixels | null; stored: 'png' | 'webp' }) =>
-        shot.stored === format ? Promise.resolve(shot.png) : forStorage(shot.pixels ?? shot.png, format);
-      const [storedA, storedB] = await Promise.all([asStored(shotA), asStored(shotB)]);
+      const [storedA, storedB] = await Promise.all([asStored(shotA, format), asStored(shotB, format)]);
 
       // Compared as they are kept, not as they were captured.
       //
@@ -819,6 +994,7 @@ async function compare(
         markupHunks: hunks,
         logs,
         kinds: [],
+        smoke: null,
         files,
         capture,
         command,
@@ -833,28 +1009,7 @@ async function compare(
     }
   }
 
-  return {
-    id: job.id,
-    scenario: job.scenario.name,
-    group: job.scenario.group,
-    viewport: job.viewport,
-    urlA: '',
-    urlB: '',
-    status: 'error',
-    threshold: job.scenario.threshold,
-    diff: null,
-    markup: null,
-    markupHunks: null,
-    logs: null,
-    answers: null,
-    kinds: [],
-    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, pictures: null, detail: null },
-    capture,
-    command,
-    ranAt: new Date().toISOString(),
-    error: lastError?.message ?? 'Unknown error',
-    durationMs: Date.now() - started,
-  };
+  return broken(job, capture, command, lastError, started);
 }
 
 function skipped(job: Job, config: Config): Comparison {
@@ -866,7 +1021,7 @@ function skipped(job: Job, config: Config): Comparison {
     group: job.scenario.group,
     viewport: job.viewport,
     urlA: config.a.baseUrl,
-    urlB: config.b.baseUrl,
+    urlB: config.b?.baseUrl ?? '',
     status: 'skipped',
     threshold: job.scenario.threshold,
     diff: null,
@@ -875,7 +1030,8 @@ function skipped(job: Job, config: Config): Comparison {
     logs: null,
     answers: null,
     kinds: [],
-    files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, pictures: null, detail: null },
+    smoke: null,
+    files: noFiles(),
     capture: null,
     error: null,
     durationMs: 0,

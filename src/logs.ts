@@ -40,6 +40,11 @@ export function originOf(url: string): string | undefined {
 /** Which kinds mean something is broken, rather than merely noisy. */
 const SERIOUS: LogKind[] = ['error', 'pageerror', 'requestfailed', 'httperror'];
 
+/** How many of these lines mean something is broken. */
+export function serious(entries: LogEntry[]): number {
+  return entries.filter((entry) => SERIOUS.includes(entry.kind)).length;
+}
+
 /**
  * Folds identical lines together.
  *
@@ -108,7 +113,6 @@ export function summarise(a: LogEntry[], b: LogEntry[], where: Origins = {}): Lo
 
   const onlyA = a.filter((entry) => !textsB.has(keyA(entry)));
   const onlyB = b.filter((entry) => !textsA.has(keyB(entry)));
-  const serious = (entries: LogEntry[]) => entries.filter((entry) => SERIOUS.includes(entry.kind)).length;
 
   return {
     a,
@@ -121,5 +125,25 @@ export function summarise(a: LogEntry[], b: LogEntry[], where: Origins = {}): Lo
     // failing the same way is how the site is.
     differs: onlyA.length > 0 || onlyB.length > 0,
     seriousOnOneSide: serious(onlyA) + serious(onlyB),
+  };
+}
+
+/**
+ * One side on its own, in the shape the report reads.
+ *
+ * A smoke run has nothing to hold the page against, so nothing is "only on
+ * one side": the lines are the finding, and the serious ones are what the
+ * page is judged on.
+ */
+export function summariseOne(a: LogEntry[]): LogSummary {
+  return {
+    a,
+    b: [],
+    onlyA: 0,
+    onlyB: 0,
+    errorsA: serious(a),
+    errorsB: 0,
+    differs: false,
+    seriousOnOneSide: 0,
   };
 }

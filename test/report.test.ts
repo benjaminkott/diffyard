@@ -114,6 +114,7 @@ function comparison(overrides: Partial<Comparison> = {}): Comparison {
       b: { fingerprint: 'bbbb2222', reusedFrom: null, recapturedBecause: null },
     },
     kinds: ['image', 'text', 'moved'],
+    smoke: null,
     command: 'diffyard run diffyard.yaml --case home--desktop --into test-run',
     ranAt: '2026-08-27T10:00:30.000Z',
     error: null,
@@ -123,6 +124,7 @@ function comparison(overrides: Partial<Comparison> = {}): Comparison {
 }
 
 const RESULT: RunResult = {
+  mode: 'compare',
   startedAt: '2026-08-27T10:00:00.000Z',
   finishedAt: '2026-08-27T10:01:00.000Z',
   durationMs: 60_000,

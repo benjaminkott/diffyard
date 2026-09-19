@@ -213,6 +213,7 @@ describe('kinds decided against the whole run', () => {
       urlB: '',
       status: 'fail',
       threshold: 0,
+      smoke: null,
       diff: diff(),
       markup: CHANGED,
       markupHunks: [hunk(lines)],

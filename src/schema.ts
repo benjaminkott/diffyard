@@ -127,7 +127,9 @@ export const CONFIG_SCHEMA = {
       type: 'object',
       description:
         'Base configuration for the two sides. Optional: leave it out when every ' +
-        'scenario names both addresses in full.',
+        'scenario names both addresses in full. With no `b` anywhere in the file the ' +
+        'run checks the one site instead of comparing: every page is captured once ' +
+        'and judged on its answer, its exceptions and its failed requests.',
       properties: { a: SIDE, b: SIDE },
       additionalProperties: false,
     },

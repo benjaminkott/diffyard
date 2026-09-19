@@ -162,7 +162,7 @@ describe('a config without compare', () => {
 
     const config = loadConfig(file);
     assert.equal(config.a.baseUrl, 'https://one.test/');
-    assert.equal(config.b.baseUrl, '');
+    assert.equal(config.b?.baseUrl, '');
   });
 });
 

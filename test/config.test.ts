@@ -29,13 +29,13 @@ describe('compare', () => {
   it('accepts a bare URL per side', () => {
     const config = load(MINIMAL);
     assert.equal(config.a.baseUrl, 'https://example.ddev.site');
-    assert.equal(config.b.baseUrl, 'https://example.com');
+    assert.equal(config.b?.baseUrl, 'https://example.com');
   });
 
   it('defaults the labels to A and B', () => {
     const config = load(MINIMAL);
     assert.equal(config.a.label, 'A');
-    assert.equal(config.b.label, 'B');
+    assert.equal(config.b?.label, 'B');
   });
 
   it('takes url, label and credentials from the long form', () => {
@@ -55,14 +55,14 @@ scenarios:
 `);
 
     assert.equal(config.a.label, 'ddev');
-    assert.deepEqual(config.b.basicAuth, { username: 'u', password: 'p' });
-    assert.deepEqual(config.b.headers, { 'X-Token': 'secret' });
+    assert.deepEqual(config.b?.basicAuth, { username: 'u', password: 'p' });
+    assert.deepEqual(config.b?.headers, { 'X-Token': 'secret' });
   });
 
-  it('rejects a missing side', () => {
+  it('rejects a URL that is not one on side B too', () => {
     assert.throws(
-      () => load(`compare:\n  a: https://example.com\nscenarios:\n  - /\n`),
-      (error: unknown) => error instanceof ConfigError && /compare\.b/.test((error as Error).message)
+      () => load(`compare:\n  a: https://example.com\n  b: not-a-url\nscenarios:\n  - /\n`),
+      ConfigError
     );
   });
 
@@ -71,6 +71,75 @@ scenarios:
       () => load(`compare:\n  a: not-a-url\n  b: https://example.com\nscenarios:\n  - /\n`),
       ConfigError
     );
+  });
+});
+
+/**
+ * One site or two is not a setting: a config that names no side B anywhere
+ * has one site to look at, and every page in it is judged on its own answer.
+ */
+describe('one site', () => {
+  it('checks one site when no side B is named', () => {
+    const config = load(`compare:\n  a: https://example.com\nscenarios:\n  - /\n  - /about\n`);
+    assert.equal(config.mode, 'smoke');
+    assert.equal(config.b, null);
+    assert.equal(config.a.baseUrl, 'https://example.com');
+    assert.equal(config.scenarios.length, 2);
+  });
+
+  it('compares as soon as a scenario names side B', () => {
+    const config = load(
+      `compare:\n  a: https://one.test/\nscenarios:\n  - name: x\n    a: /page\n    b: https://two.test/page\n`
+    );
+    assert.equal(config.mode, 'compare');
+    assert.equal(config.b?.baseUrl, '');
+  });
+
+  it('compares as soon as a group brings side B', () => {
+    const config = load(
+      `groups:\n  - name: shop\n    compare:\n      a: https://one.test/\n      b: https://two.test/\n    scenarios:\n      - /\n`
+    );
+    assert.equal(config.mode, 'compare');
+    assert.equal(config.scenarios[0]?.sideB?.baseUrl, 'https://two.test/');
+  });
+
+  it('still needs somewhere to resolve a bare path against', () => {
+    assert.throws(
+      () => load(`scenarios:\n  - /\n`),
+      (error: unknown) => error instanceof ConfigError && /compare\.a/.test((error as Error).message)
+    );
+  });
+
+  it('takes full URLs without any compare block', () => {
+    const config = load(`scenarios:\n  - https://example.com/\n  - https://example.com/about\n`);
+    assert.equal(config.mode, 'smoke');
+    assert.equal(config.a.baseUrl, '');
+  });
+
+  it('has no side B to reuse', () => {
+    assert.throws(
+      () => load(`compare:\n  a: https://example.com\nreuse:\n  side: b\nscenarios:\n  - /\n`),
+      (error: unknown) => error instanceof ConfigError && /no side B/.test((error as Error).message)
+    );
+  });
+
+  it('has no side B for a notice to be limited to', () => {
+    assert.throws(
+      () =>
+        load(
+          `compare:\n  a: https://example.com\nbeforeEach:\n  - name: staging notice\n    side: b\n    steps:\n      - click: .close\nscenarios:\n  - /\n`
+        ),
+      (error: unknown) => error instanceof ConfigError && /staging notice.*no side B/.test((error as Error).message)
+    );
+  });
+
+  it('lets the group side A stand in for a missing top-level one', () => {
+    const config = load(
+      `groups:\n  - name: shop\n    compare:\n      a: https://one.test/\n    scenarios:\n      - /\n`
+    );
+    assert.equal(config.mode, 'smoke');
+    assert.equal(config.scenarios[0]?.sideA?.baseUrl, 'https://one.test/');
+    assert.equal(config.scenarios[0]?.sideB, null);
   });
 });
 

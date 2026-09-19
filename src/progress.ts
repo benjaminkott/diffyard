@@ -36,7 +36,8 @@ export interface ProgressOptions {
   /** Falls back to plain, line-based output when the stream is not a terminal. */
   interactive: boolean;
   labelA: string;
-  labelB: string;
+  /** Null in a smoke run, which captures one side and compares nothing. */
+  labelB: string | null;
   /** How many comparisons may run at once, which is the cap on the list below. */
   workers: number;
 }
@@ -204,8 +205,9 @@ export class Progress {
   }
 
   private describe(phase: Phase): string {
-    if (phase === 'compare') return 'comparing';
     const { labelA, labelB } = this.options;
+    if (labelB === null) return phase === 'compare' ? 'writing' : labelA === 'A' ? 'capturing' : `capturing ${labelA}`;
+    if (phase === 'compare') return 'comparing';
     if (labelA === 'A' && labelB === 'B') return 'capturing both sides';
     return `capturing ${labelA} and ${labelB}`;
   }

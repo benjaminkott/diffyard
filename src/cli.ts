@@ -86,6 +86,9 @@ function help(): string {
     `  diffyard init ${paint('grey', '[config.yaml]')}\n` +
     `  diffyard schema ${paint('grey', '[file.json]')}\n` +
     `  diffyard serve ${paint('grey', '[run, output dir or config.yaml]')}\n\n` +
+    `${title('  One site')}\n` +
+    `  ${paint('grey', 'Leave compare.b out of the config and run it the same way: every page is')}\n` +
+    `  ${paint('grey', 'captured once and judged on its answer, its exceptions and its failed requests.')}\n\n` +
     `${title('  Running a comparison')}\n` +
     flag('  -o, --out <dir>', 'where the run folder goes') +
     flag('  -f, --filter <text>', 'only scenarios whose group/name contains this') +
@@ -121,8 +124,8 @@ function help(): string {
     flag('  -q, --quiet', 'only the summary') +
     flag('      --no-progress', 'no live progress line') +
     `\n${title('  Exit codes')}\n` +
-    `  ${paint('green', '0')}  ${paint('grey', 'nothing differs beyond its threshold')}\n` +
-    `  ${paint('red', '1')}  ${paint('grey', 'at least one comparison differs')}\n` +
+    `  ${paint('green', '0')}  ${paint('grey', 'nothing differs beyond its threshold, or every page came back clean')}\n` +
+    `  ${paint('red', '1')}  ${paint('grey', 'at least one comparison differs, or one page failed')}\n` +
     `  ${paint('yellow', '2')}  ${paint('grey', 'a capture errored, or the config is invalid')}\n`
   );
 }
@@ -212,7 +215,7 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
     stream: process.stdout,
     interactive: process.stdout.isTTY === true && values['no-progress'] !== true && !quiet,
     labelA: config.a.label,
-    labelB: config.b.label,
+    labelB: config.b?.label ?? null,
     workers: config.workers,
   });
 
@@ -287,7 +290,7 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
       },
       onStart: (total, info) => {
         const facts = [
-          `${total} comparison${total === 1 ? '' : 's'}`,
+          `${total} ${config.mode === 'smoke' ? 'page' : 'comparison'}${total === 1 ? '' : 's'}`,
           config.browser + (config.headless ? '' : ' headed'),
           config.workers > 1 ? `${config.workers} workers` : null,
           `run ${info.runId}`,
@@ -598,7 +601,14 @@ async function applyOverrides(config: Config, values: Values): Promise<Config> {
   }
 
   if (typeof values.reuse === 'string') {
-    next.reuse = { ...next.reuse, sides: parseSides(values.reuse, '--reuse') };
+    const sides = parseSides(values.reuse, '--reuse');
+    if (next.b === null && sides.includes('b')) {
+      throw new ConfigError(
+        '--reuse names side B, but this config has no side B: without `compare.b` ' +
+          'every page is checked on its own. Reuse `a`, or add the other site.'
+      );
+    }
+    next.reuse = { ...next.reuse, sides };
   }
 
   if (typeof values['reuse-from'] === 'string') {
@@ -924,11 +934,21 @@ function reuseNotice(config: Config, source: { runId: string; capturedAt: string
 
 function header(config: Config): string {
   const labelA = config.a.label === 'A' ? '' : config.a.label;
-  const labelB = config.b.label === 'B' ? '' : config.b.label;
+  const labelB = !config.b || config.b.label === 'B' ? '' : config.b.label;
   const width = Math.max(labelA.length, labelB.length);
 
   const side = (letter: string, label: string, url: string) =>
     `  ${paint('bold', letter)}  ${width > 0 ? pad(label, width + 2) : ''}${paint('grey', url || '(per scenario)')}\n`;
+
+  // One site, and said so where the second one would have been: a run that
+  // compares nothing should not look like a comparison with a side missing.
+  if (!config.b) {
+    return (
+      `\n  ${paint('bold', 'diffyard')} ${paint('grey', VERSION)}\n\n` +
+      side('A', labelA, config.a.baseUrl) +
+      `  ${paint('grey', 'smoke test — no second site, every page judged on its own answer')}\n`
+    );
+  }
 
   return (
     `\n  ${paint('bold', 'diffyard')} ${paint('grey', VERSION)}\n\n` +
@@ -1012,8 +1032,24 @@ function line(comparison: Comparison, index: number, total: number, scale: numbe
     return `  ${MARK.error()} ${counter}${group}${name} ${viewport} ${paint('yellow', what)}`;
   }
 
-  const ratio = comparison.diff ? comparison.diff.ratio : 0;
   const mark = comparison.status === 'pass' ? MARK.pass() : MARK.fail();
+
+  // A page on its own has no percentage: what the line has room to say is
+  // how it answered, and what went wrong on it if anything did.
+  if (comparison.smoke) {
+    const { answer, errors } = comparison.smoke;
+    const status = answer.status === null ? 'no answer' : String(answer.status);
+    const clean = answer.status !== null && answer.status >= 200 && answer.status < 300;
+    const said = padLeft(status, 7);
+    const notes = [
+      errors > 0 ? paint('red', `${errors} error${errors === 1 ? '' : 's'}`) : '',
+      answer.redirected ? paint('grey', `→ ${answer.path}`) : '',
+    ].filter(Boolean);
+
+    return `  ${mark} ${counter}${group}${name} ${viewport} ${clean ? said : paint('red', said)}${notes.length > 0 ? `  ${notes.join('  ')}` : ''}`;
+  }
+
+  const ratio = comparison.diff ? comparison.diff.ratio : 0;
   const value = padLeft(percent(ratio), 7);
   const note = describeShift(comparison);
 
@@ -1033,13 +1069,14 @@ function summary(
   width: number,
   written: RunResult = result
 ): string {
+  const smoke = result.mode === 'smoke';
   const parts: string[] = [
     result.failed > 0
-      ? `${MARK.fail()} ${result.failed} differ`
-      : `${MARK.pass()} nothing differs`,
+      ? `${MARK.fail()} ${result.failed} ${smoke ? 'failed' : 'differ'}`
+      : `${MARK.pass()} ${smoke ? 'every page came back clean' : 'nothing differs'}`,
   ];
 
-  if (result.passed > 0) parts.push(`${MARK.pass()} ${result.passed} unchanged`);
+  if (result.passed > 0) parts.push(`${MARK.pass()} ${result.passed} ${smoke ? 'clean' : 'unchanged'}`);
   if (result.errored > 0) parts.push(`${MARK.error()} ${result.errored} errored`);
   if (result.skipped > 0) parts.push(`${MARK.skip()} ${result.skipped} skipped`);
 
@@ -1048,6 +1085,20 @@ function summary(
   const spacing = Math.max(1, width - visibleLength(verdict) - visibleLength(timing));
 
   const lines = [`\n  ${rule(width)}\n  ${verdict}${' '.repeat(spacing)}${timing}\n`];
+
+  // The pages that failed, by name: on a suite of twenty the question after
+  // a smoke run is which ones to open, and the answer is short enough to say.
+  const broken = result.comparisons.filter((entry) => entry.status === 'fail' && entry.smoke);
+  if (broken.length > 0) {
+    lines.push(`\n  ${paint('grey', 'Failed pages')}\n`);
+    for (const entry of broken.slice(0, 5)) {
+      const where = entry.group ? `${paint('grey', `${entry.group}/`)}${entry.scenario}` : entry.scenario;
+      lines.push(`    ${padLeft(smokeReason(entry), 16)}  ${where} ${paint('grey', entry.viewport.name)}\n`);
+    }
+    if (broken.length > 5) {
+      lines.push(`    ${paint('grey', `and ${broken.length - 5} more — filter the report by "Failed"`)}\n`);
+    }
+  }
 
   const worst = result.comparisons
     .filter((entry) => entry.status === 'fail' && entry.diff)
@@ -1183,6 +1234,21 @@ function visibleLength(text: string): number {
   return [...text.replace(new RegExp(String.fromCharCode(27) + '\\[[0-9;]*m', 'g'), '')].length;
 }
 
+/**
+ * Why a page failed its smoke test, in the fewest words: the status when it
+ * was not a 2xx, the count of what went wrong on the page otherwise.
+ */
+function smokeReason(comparison: Comparison): string {
+  const smoke = comparison.smoke;
+  if (!smoke) return '';
+  const { answer, errors } = smoke;
+  const reasons: string[] = [];
+  if (answer.status === null) reasons.push('no answer');
+  else if (answer.status < 200 || answer.status >= 300) reasons.push(`HTTP ${answer.status}`);
+  if (errors > 0) reasons.push(`${errors} error${errors === 1 ? '' : 's'}`);
+  return reasons.join(', ');
+}
+
 function junitXml(result: RunResult): string {
   const cases = result.comparisons
     .map((comparison) => {
@@ -1197,6 +1263,9 @@ function junitXml(result: RunResult): string {
       if (comparison.status === 'fail' && comparison.diff) {
         const message = `${(comparison.diff.ratio * 100).toFixed(2)}% of pixels differ (threshold ${(comparison.threshold * 100).toFixed(2)}%)`;
         return `${open}\n      <failure message="${escapeXml(message)}"/>\n    </testcase>`;
+      }
+      if (comparison.status === 'fail' && comparison.smoke) {
+        return `${open}\n      <failure message="${escapeXml(smokeReason(comparison))}"/>\n    </testcase>`;
       }
       return `${open}</testcase>`;
     })

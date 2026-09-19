@@ -90,7 +90,7 @@ describe('reusing a side', { concurrency: false }, () => {
     const after = second.comparisons.find((entry) => entry.scenario === 'index');
 
     assert.equal(after?.capture?.a.reusedFrom?.runId, first.runId);
-    assert.equal(after?.capture?.b.reusedFrom, null, 'side B is still captured');
+    assert.equal(after?.capture?.b?.reusedFrom, null, 'side B is still captured');
     assert.equal(second.reuse?.reused, 2);
     assert.equal(second.reuse?.recaptured, 0);
 
@@ -150,7 +150,7 @@ describe('reusing a side', { concurrency: false }, () => {
 
     assert.equal(again.reuse?.recaptured, 0, 'nothing was photographed again');
     assert.ok(after?.capture?.a.reusedFrom, 'side A came from the stored run');
-    assert.ok(after?.capture?.b.reusedFrom, 'and so did side B');
+    assert.ok(after?.capture?.b?.reusedFrom, 'and so did side B');
     assert.equal(after?.diff?.diffPixels, before?.diff?.diffPixels, 'the same pixels, measured again');
     assert.equal(after?.status, 'pass', 'and judged under the threshold this run was given');
   });

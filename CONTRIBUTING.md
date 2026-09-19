@@ -3,7 +3,9 @@
 diffyard compares two URLs against each other — an old and a new
 environment, production against staging — and reports what changed, as a pixel
 diff and as a structural diff of the DOM. There is no stored baseline; both
-sides are captured fresh on every run.
+sides are captured fresh on every run. A config that names no side B is the
+same walk over one site with nothing to diff, and each page is judged on its
+own answer instead: a smoke test, with the same report.
 
 It is used **from the project being checked**, not from this checkout: the
 config lives in that project and the results are written there. Keep that in
@@ -85,6 +87,16 @@ a group may bring its own. Groups are expanded at load time into ordinary
 scenarios carrying a `group` and their own sides, so nothing downstream needs
 to know groups exist; only the report and the CLI read the field, to section
 and to label.
+
+Whether a run compares or smoke-tests is `mode`, decided by the parser from
+whether the file names a side B anywhere, and never a flag: one site or two is
+what the file says, not a way of running it. In a smoke run `Config.b` is
+null, and the type makes every consumer say what it does without one. The
+verdict is read off what the capture already records — the answer and the
+log — so a smoke run adds no listener a comparison does not have. The record
+stays a `Comparison` with its B fields empty rather than a type of its own,
+because the report, the pool, `--into`, `--unfinished` and reuse all read that
+shape, and a second one would be a second report.
 
 The MCP server is a signpost, not a second implementation. Everything diffyard
 does is a command line, so the server hands out the path and the usage and

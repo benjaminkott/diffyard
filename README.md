@@ -277,6 +277,50 @@ Options are grouped — `compare`, `output`, `browser`, `timeouts`, `diff`,
 configuration documenting every option, and `examples/ddev-vs-live.yaml` shows
 a realistic one.
 
+### One site on its own
+
+Leave `b` out and there is nothing to compare against, so the run does the
+other thing the same walk is good for: a smoke test. Every page is captured
+once, in every viewport, with the same `beforeEach`, steps, masks and
+credentials — and judged on its own answer instead of on a difference.
+
+```yaml
+compare:
+  a: https://example.com
+
+scenarios:
+  - /
+  - /products
+  - /about
+```
+
+A page passes when it answered `2xx` and nothing serious was logged while it
+loaded. It fails on a status that is not `2xx`, an uncaught exception, a
+request that failed or came back an error, or a `console.error` — the same
+lines a comparison records under [Console output](#console-output), so
+`logs.ignore` quiets a third-party script here too. A redirect is noted, not
+judged: the page is allowed to move, and the picture is of where it landed.
+
+The report has the same overview, with the rows saying how each page answered
+rather than by how much it differs, and one view per page: the screenshot, and
+what the page said. The exit code is `1` when a page failed, which is what a
+pipeline wants of a deployment check. The screenshots are written the way a
+compared side is, so the run can be taken as the reference of a later
+comparison with `--reuse a --reuse-from <run>`.
+
+Nothing else changes: a config with a `b` anywhere — under `compare`, on a
+group, or as a scenario's own address — is a comparison, as before. Only
+`--reuse b` and a `beforeEach` limited to side B are refused, there being no
+side B to mean.
+
+That includes `mask`, `hide` and `remove`: they shape the picture exactly as
+they would in a comparison. A mask exists to keep a carousel from failing a
+comparison it cannot pass, and a smoke test has no comparison to fail — so a
+mask carried over from a comparison config, or from the `explore` draft, only
+paints a magenta block over something a reader would rather see. Leave it out,
+unless the run is meant to serve as the reference of a later comparison that
+masks the same thing.
+
 ### Several sites at once
 
 A suite is usually a handful of sites checked the same way. A group carries its
@@ -476,6 +520,9 @@ diffyard explore https://example.ddev.site/ \
   --viewport 375x812 --insecure
 ```
 
+Without `--compare-with` the draft names one site and is runnable as it is: a
+smoke test of the pages it found, one line away from a comparison.
+
 ### Working through the findings one at a time
 
 Every result carries the line that runs it again, and the report puts it under
@@ -608,7 +655,8 @@ diffyard serve [run, output dir or config.yaml]
 | `--no-fail` | Always exit `0` |
 | `-q, --quiet` / `--no-progress` | Less output |
 
-Exit codes: `0` no differences, `1` at least one comparison over its threshold,
+Exit codes: `0` no differences (or, checking one site, every page came back
+clean), `1` at least one comparison over its threshold or one page that failed,
 `2` a capture errored or the config is invalid.
 
 Under the result, diffyard says so when a newer version has been published —

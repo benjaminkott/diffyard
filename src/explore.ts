@@ -415,7 +415,11 @@ function draftConfig(
   return [
     'compare:',
     `  a: ${origin}/`,
-    `  b: ${compareWith ?? 'https://REPLACE-ME.example.com/'}`,
+    // Without the other side named, the draft is a smoke test of this one:
+    // runnable as it is, and one line away from a comparison.
+    ...(compareWith
+      ? [`  b: ${compareWith}`]
+      : ['  # b: https://the-other-system.example.com/   # leave out to check this site on its own']),
     '',
     'output:',
     '  dir: .diffyard-report',

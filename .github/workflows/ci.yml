@@ -7,7 +7,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # A named image rather than `ubuntu-latest`: that label moves to the next
+    # Ubuntu on a date GitHub picks, and with it the system libraries Playwright
+    # installs for Chromium. Which image the tests run on is a decision to make
+    # here, not one to be made by a calendar.
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7

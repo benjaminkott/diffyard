@@ -170,7 +170,9 @@ export const CONFIG_SCHEMA = {
         headless: { type: 'boolean', default: true },
         viewports: {
           type: 'object',
-          description: 'Declared once here, referenced by name from the scenarios.',
+          description:
+            'Declared once here, referenced by name from the scenarios. Shown widest first ' +
+            'wherever a run lists them, whatever order they are declared in.',
           additionalProperties: {
             type: 'object',
             properties: {

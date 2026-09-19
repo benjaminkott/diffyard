@@ -178,10 +178,35 @@ scenarios:
   - /
 `);
 
+    // Widest first, however the file lists them.
     assert.deepEqual(config.scenarios[0]?.viewports.map((viewport) => viewport.name), [
-      'mobile',
       'desktop',
+      'mobile',
     ]);
+  });
+
+  it('puts the widest viewport first wherever they are listed', () => {
+    const config = load(`
+compare:
+  a: https://example.ddev.site
+  b: https://example.com
+browser:
+  viewports:
+    mobile: { width: 375, height: 812 }
+    tablet: { width: 768, height: 1024 }
+    desktop: { width: 1440, height: 900 }
+    retina: { width: 1440, height: 900, dpr: 2 }
+scenarios:
+  - /
+  - name: narrow
+    path: /
+    viewports: [mobile, tablet]
+`);
+
+    const names = (index: number) => config.scenarios[index]?.viewports.map((viewport) => viewport.name);
+    assert.deepEqual(config.viewports.map((viewport) => viewport.name), ['desktop', 'retina', 'tablet', 'mobile']);
+    assert.deepEqual(names(0), ['desktop', 'retina', 'tablet', 'mobile'], 'two of one width keep their own order');
+    assert.deepEqual(names(1), ['tablet', 'mobile'], 'a scenario\'s own list too');
   });
 
   it('resolves viewports referenced by name', () => {
@@ -641,7 +666,7 @@ groups:
   it('inherits what a group does not state and overrides what it does', () => {
     const config = load(SITES);
 
-    assert.deepEqual(config.scenarios[0]?.viewports.map((v) => v.name), ['mobile', 'desktop']);
+    assert.deepEqual(config.scenarios[0]?.viewports.map((v) => v.name), ['desktop', 'mobile']);
     assert.deepEqual(config.scenarios[2]?.viewports.map((v) => v.name), ['mobile']);
 
     assert.equal(config.scenarios[0]?.threshold, 0.01);

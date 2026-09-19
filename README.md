@@ -238,8 +238,8 @@ output:
 browser:
   # Declared once, referenced by name from the scenarios.
   viewports:
-    mobile:  { width: 375, height: 812 }
     desktop: { width: 1440, height: 900 }
+    mobile:  { width: 375, height: 812 }
 
 diff:
   threshold: 0.001
@@ -275,7 +275,8 @@ Options are grouped — `compare`, `output`, `browser`, `timeouts`, `diff`,
 `stability`, `markup`, `beforeEach`, `scenarios` — and everything except
 `compare` and `scenarios` has a working default. `diffyard init` writes a
 configuration documenting every option, and `examples/ddev-vs-live.yaml` shows
-a realistic one.
+a realistic one. Viewports are shown widest first — in the run's lines, in the
+rows of a tile and as the picture on it — whatever order they are declared in.
 
 ### One site on its own
 
@@ -329,8 +330,8 @@ own pair of URLs and its own pages, and inherits everything it does not state:
 ```yaml
 browser:
   viewports:
-    mobile:  { width: 375, height: 812 }
     desktop: { width: 1440, height: 900 }
+    mobile:  { width: 375, height: 812 }
 
 diff:
   threshold: 0.001

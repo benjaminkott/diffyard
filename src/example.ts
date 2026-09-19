@@ -41,9 +41,9 @@ browser:
   headless: true
   # Declared once, referenced by name from the scenarios.
   viewports:
-    mobile:  { width: 375, height: 812 }
-    tablet:  { width: 768, height: 1024 }
     desktop: { width: 1440, height: 900 }
+    tablet:  { width: 768, height: 1024 }
+    mobile:  { width: 375, height: 812 }
     # retina: { width: 1440, height: 900, dpr: 2 }
   colorScheme: light      # light | dark | no-preference
   reducedMotion: true

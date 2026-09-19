@@ -603,7 +603,7 @@ function parseViewports(value: unknown, where: string): Viewport[] {
   if (isRecord(value)) {
     const entries = Object.entries(value);
     if (entries.length === 0) return [DEFAULT_VIEWPORT];
-    return entries.map(([name, entry]) => parseViewport(entry, name, `${where}.${name}`));
+    return widestFirst(entries.map(([name, entry]) => parseViewport(entry, name, `${where}.${name}`)));
   }
 
   if (!Array.isArray(value)) {
@@ -611,17 +611,34 @@ function parseViewports(value: unknown, where: string): Viewport[] {
   }
   if (value.length === 0) return [DEFAULT_VIEWPORT];
 
-  return value.map((entry, index) => {
-    const at = `${where}[${index}]`;
-    if (!isRecord(entry)) {
-      throw new ConfigError(`${at} must be a mapping like { name: mobile, width: 375, height: 812 }`);
-    }
-    const name = entry['name'];
-    if (typeof name !== 'string') {
-      throw new ConfigError(`${at} needs a \`name\`, or declare viewports as a mapping keyed by name`);
-    }
-    return parseViewport(entry, name, at);
-  });
+  return widestFirst(
+    value.map((entry, index) => {
+      const at = `${where}[${index}]`;
+      if (!isRecord(entry)) {
+        throw new ConfigError(`${at} must be a mapping like { name: mobile, width: 375, height: 812 }`);
+      }
+      const name = entry['name'];
+      if (typeof name !== 'string') {
+        throw new ConfigError(`${at} needs a \`name\`, or declare viewports as a mapping keyed by name`);
+      }
+      return parseViewport(entry, name, at);
+    })
+  );
+}
+
+/**
+ * Desktop before mobile, however the file lists them.
+ *
+ * The order the viewports are declared in is the order everything downstream
+ * shows them in: the lines of the run, the rows of a tile, the picture on it.
+ * A config tends to list the small one first because that is how responsive
+ * CSS is written, and the run then leads with the narrowest shot of every
+ * page. The widest one is the one a reader wants first, so that is the order,
+ * and it is decided here rather than left to how the file happened to be
+ * typed. Stable, so two of one width keep their own order.
+ */
+function widestFirst(viewports: Viewport[]): Viewport[] {
+  return [...viewports].sort((left, right) => right.width - left.width);
 }
 
 function parseViewport(entry: unknown, name: string, at: string): Viewport {
@@ -649,7 +666,7 @@ function resolveViewportNames(value: unknown, declared: Viewport[], where: strin
   const names = Array.isArray(value) ? value : [value];
   const known = new Map(declared.map((viewport) => [viewport.name, viewport]));
 
-  return names.map((name, index) => {
+  const picked = names.map((name, index) => {
     const at = `${where}[${index}]`;
     if (typeof name !== 'string') {
       throw new ConfigError(
@@ -662,6 +679,8 @@ function resolveViewportNames(value: unknown, declared: Viewport[], where: strin
     }
     return viewport;
   });
+
+  return widestFirst(picked);
 }
 
 function parseSteps(value: unknown, where: string): Step[] {

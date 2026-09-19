@@ -56,6 +56,20 @@ Nothing checks these, so look at them. `KEEP=1 npm run screenshots` leaves the
 run behind and prints where, which is how to open the report the pictures came
 from.
 
+## Keeping the dependencies current
+
+Dependabot opens one pull request a week per ecosystem — the npm updates
+grouped into one, the GitHub Actions on their own — from
+[`.github/dependabot.yml`](.github/dependabot.yml). Merge it when CI is green;
+that run is the review. Two things are deliberate about it:
+
+- `@types/node` is held to the major of the Node the tool targets, the current
+  LTS, and moves when that target does. A newer major would let code compile
+  against APIs the target does not have.
+- The workflows run on `ubuntu-latest` rather than a named image, so the
+  runner moves on its own too, and the CI run is what says whether the move
+  held.
+
 ## Cutting a release
 
 Publishing runs on npm's trusted publishing: the workflow proves who it is with

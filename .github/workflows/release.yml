@@ -23,9 +23,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      # v6 is the first that carries out the trusted-publishing handshake, and
+      # v6 was the first that carries out the trusted-publishing handshake, and
       # npm has to be 11.5.1 or newer to understand it — Node 24 brings one.
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           registry-url: https://registry.npmjs.org

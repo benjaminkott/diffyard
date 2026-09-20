@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { McpServer } from '@modelcontextprotocol/server';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { EXAMPLE_CONFIG } from './example.js';
 import { STEP_REFERENCE } from './reference.js';
 import { schemaJson } from './schema.js';
@@ -26,8 +26,27 @@ Call diffyard_usage once to get its path and how to drive it, then run it in you
 shell. There are no tools here that run comparisons or read results: the command
 writes files, and you can read those directly.`;
 
+/**
+ * Nothing the server hands out changes while it runs: the usage text, the
+ * references and the schema are baked into the bundle, and a new diffyard is a
+ * new process. So a client may keep every answer for a good while instead of
+ * asking again on every turn.
+ */
+const CACHE_HINT = { ttlMs: 60 * 60 * 1000, cacheScope: 'private' as const };
+
 export function createServer(): McpServer {
-  const server = new McpServer({ name: 'diffyard', version: VERSION }, { instructions: INSTRUCTIONS });
+  const server = new McpServer(
+    { name: 'diffyard', version: VERSION },
+    {
+      instructions: INSTRUCTIONS,
+      cacheHints: {
+        'server/discover': CACHE_HINT,
+        'tools/list': CACHE_HINT,
+        'resources/list': CACHE_HINT,
+        'resources/read': CACHE_HINT,
+      },
+    }
+  );
 
   server.registerTool(
     'diffyard_usage',
@@ -36,7 +55,9 @@ export function createServer(): McpServer {
       description:
         'Where diffyard is installed and how to use it: writing a config, running a comparison ' +
         'or a smoke test, and reading the results. Call this first; everything after it happens in your shell.',
-      inputSchema: {},
+      // It reads a path off the filesystem and returns text: a client may call
+      // it without asking, and calling it twice changes nothing.
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
     async () => ({ content: [{ type: 'text' as const, text: usage() }] })
   );
@@ -48,6 +69,7 @@ export function createServer(): McpServer {
       title: 'Config reference',
       description: 'A diffyard config with every option documented inline.',
       mimeType: 'text/yaml',
+      cacheHint: CACHE_HINT,
     },
     async (uri) => ({ contents: [{ uri: uri.href, mimeType: 'text/yaml', text: EXAMPLE_CONFIG }] })
   );
@@ -59,6 +81,7 @@ export function createServer(): McpServer {
       title: 'Interaction steps',
       description: 'Every step a scenario can perform before the screenshot is taken.',
       mimeType: 'text/markdown',
+      cacheHint: CACHE_HINT,
     },
     async (uri) => ({ contents: [{ uri: uri.href, mimeType: 'text/markdown', text: STEP_REFERENCE }] })
   );
@@ -70,6 +93,7 @@ export function createServer(): McpServer {
       title: 'Config JSON schema',
       description: 'For validating or generating a config.',
       mimeType: 'application/json',
+      cacheHint: CACHE_HINT,
     },
     async (uri) => ({ contents: [{ uri: uri.href, mimeType: 'application/json', text: schemaJson() }] })
   );
@@ -190,11 +214,21 @@ function cliPath(): string {
   return existsSync(fromDist) ? fromDist : 'diffyard';
 }
 
-export async function main(): Promise<void> {
-  await createServer().connect(new StdioServerTransport());
+/**
+ * `serveStdio` rather than a transport wired by hand: the first message decides
+ * whether the client speaks the 2026-07-28 revision, where every request
+ * carries its own version and `server/discover` replaces the handshake, or the
+ * older `initialize` one — and both are served from the same factory. A server
+ * connected straight to a `StdioServerTransport` answers only the older.
+ */
+export function main(): void {
+  serveStdio(() => createServer(), {
+    // stdout is the wire; stderr is where a stdio server may speak.
+    onerror: (error) => process.stderr.write(`diffyard-mcp: ${error.message}\n`),
+  });
 }
 
 // Only start when executed directly, so the module stays importable.
 if (basename(process.argv[1] ?? '').startsWith('diffyard-mcp')) {
-  await main();
+  main();
 }

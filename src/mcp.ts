@@ -19,7 +19,8 @@ import { VERSION } from './manifest.js';
  * used — and then gets out of the way.
  */
 const INSTRUCTIONS = `diffyard compares two URLs against each other and reports what changed, as a
-pixel diff and as a structural diff of the DOM. It is a command line tool.
+pixel diff and as a structural diff of the DOM. A config naming only one URL is a
+smoke test of that site instead. It is a command line tool.
 
 Call diffyard_usage once to get its path and how to drive it, then run it in your
 shell. There are no tools here that run comparisons or read results: the command
@@ -33,8 +34,8 @@ export function createServer(): McpServer {
     {
       title: 'How to run diffyard',
       description:
-        'Where diffyard is installed and how to use it: writing a config, running a comparison, ' +
-        'and reading the results. Call this first; everything after it happens in your shell.',
+        'Where diffyard is installed and how to use it: writing a config, running a comparison ' +
+        'or a smoke test, and reading the results. Call this first; everything after it happens in your shell.',
       inputSchema: {},
     },
     async () => ({ content: [{ type: 'text' as const, text: usage() }] })
@@ -79,7 +80,7 @@ export function createServer(): McpServer {
 function usage(): string {
   const cli = cliPath();
 
-  return `diffyard ${VERSION} — visual regression by comparing two URLs.
+  return `diffyard ${VERSION} — visual regression by comparing two URLs, or a smoke test of one.
 
 Path
   ${cli}
@@ -106,10 +107,10 @@ Commands
       --threshold <0..1>, --workers <n>, --headed, --junit <file>.
 
   ${cli} run diffyard.yaml            (a config with no compare.b)
-      Checks one site instead of comparing two: every page is captured once
-      and judged on its own answer -- a status that is not 2xx, an uncaught
-      exception, a failed request or a console error fails it. Same flags,
-      same report, same exit codes. Use it to smoke-test a deployment when
+      A smoke test: one site checked instead of two compared. Every page is
+      captured once and judged on its own answer -- a status that is not 2xx,
+      an uncaught exception, a failed request or a console error fails it.
+      Same flags, same report, same exit codes. Use it for a deployment when
       there is nothing to hold it against.
 
   ${cli} run diffyard.yaml --reuse b

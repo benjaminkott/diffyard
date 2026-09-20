@@ -79,16 +79,18 @@ function help(): string {
   const flag = (name: string, text: string) => `  ${pad(name, 30)}${paint('grey', text)}\n`;
 
   return (
-    `\n  ${paint('bold', 'diffyard')} ${paint('grey', VERSION)}  ${paint('grey', 'compare two URLs and report what changed')}\n\n` +
+    `\n  ${paint('bold', 'diffyard')} ${paint('grey', VERSION)}  ${paint('grey', 'compare two URLs and report what changed, or smoke-test one')}\n\n` +
     `${title('  Usage')}\n` +
     `  diffyard run <config.yaml> ${paint('grey', '[options]')}\n` +
     `  diffyard explore <url> ${paint('grey', '[options]')}\n` +
     `  diffyard init ${paint('grey', '[config.yaml]')}\n` +
     `  diffyard schema ${paint('grey', '[file.json]')}\n` +
     `  diffyard serve ${paint('grey', '[run, output dir or config.yaml]')}\n\n` +
-    `${title('  One site')}\n` +
-    `  ${paint('grey', 'Leave compare.b out of the config and run it the same way: every page is')}\n` +
-    `  ${paint('grey', 'captured once and judged on its answer, its exceptions and its failed requests.')}\n\n` +
+    `${title('  Smoke test')}\n` +
+    `  ${paint('grey', 'A config that names only compare.a is one: run it the same way, and every page')}\n` +
+    `  ${paint('grey', 'is captured once and judged on its answer, its exceptions and its failed')}\n` +
+    `  ${paint('grey', 'requests. explore <url> without --compare-with drafts such a config; init')}\n` +
+    `  ${paint('grey', 'writes a comparison, and taking b out of it leaves a smoke test.')}\n\n` +
     `${title('  Running a comparison')}\n` +
     flag('  -o, --out <dir>', 'where the run folder goes') +
     flag('  -f, --filter <text>', 'only scenarios whose group/name contains this') +
@@ -111,7 +113,7 @@ function help(): string {
     flag('      --run-timeout <ms>', 'for the whole run') +
     `\n${title('  Looking at a page')}\n` +
     flag('      --viewport <WxH>', 'size to inspect at, default 1440x900') +
-    flag('      --compare-with <url>', 'the other side, for the config draft') +
+    flag('      --compare-with <url>', 'the other side, for the config draft; without it the draft is a smoke test') +
     flag('      --insecure', 'accept self-signed certificates') +
     `\n${title('  Serving a report')}\n` +
     flag('      --port <n>', 'default 4173, or the next one free; a port you name is used as given') +

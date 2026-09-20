@@ -1,7 +1,7 @@
 {
   "name": "diffyard",
   "version": "0.5.0",
-  "description": "Visual regression testing by comparing two URLs side by side",
+  "description": "Visual regression testing by comparing two URLs against each other, or a smoke test of one",
   "keywords": [
     "visual-regression",
     "screenshot",

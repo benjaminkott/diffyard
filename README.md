@@ -7,7 +7,8 @@
 
 <p align="center">
   Visual regression testing by comparing
-  <strong>two URLs</strong> against each other.
+  <strong>two URLs</strong> against each other —
+  or a smoke test of one.
 </p>
 
 ---
@@ -71,7 +72,8 @@ so do the results:
 cd ~/projects/my-site
 
 diffyard init diffyard.yaml  # config + JSON schema, fully commented
-$EDITOR diffyard.yaml        # put in the two URLs and the pages to compare
+$EDITOR diffyard.yaml        # put in the two URLs and the pages to compare;
+                             # only one URL, and it is a smoke test
 diffyard run diffyard.yaml
 ```
 

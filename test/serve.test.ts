@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -132,6 +132,24 @@ describe('serving a report', () => {
     const answer = await fetch(`${serving.url}shots/nothing.png`);
 
     assert.equal(answer.status, 404);
+  });
+
+  it('turns a file it may not read into an answer rather than a crash', {
+    // Root reads a file whatever its mode says, so there is nothing to refuse.
+    skip: process.getuid?.() === 0 || process.platform === 'win32',
+  }, async () => {
+    const locked = join(workDir, 'run-one', 'shots', 'locked.png');
+    writeFileSync(locked, solidPng(4, 4, [10, 20, 30]));
+    chmodSync(locked, 0o000);
+
+    try {
+      const answer = await fetch(`${serving.url}shots/locked.png`);
+
+      assert.equal(answer.status, 403);
+      assert.equal((await fetch(serving.url)).status, 200, 'and the server is still there');
+    } finally {
+      rmSync(locked, { force: true });
+    }
   });
 
   it('walks on to a free port when the one it wanted is taken', async () => {

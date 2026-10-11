@@ -1,9 +1,9 @@
-import { createReadStream } from 'node:fs';
-import { readdir, stat } from 'node:fs/promises';
+import { open, readdir, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { extname, join, normalize, resolve, sep } from 'node:path';
+import { pipeline } from 'node:stream';
 
 /**
  * The report, over HTTP.
@@ -77,6 +77,12 @@ export async function serveReport(dir: string, options: ServeOptions = {}): Prom
 
   const server = createServer((request, response) => {
     void answer(root, request.url ?? '/', response).catch(() => {
+      // Once the head is out there is no status left to change; cutting the
+      // connection is the only way left to say the body is not whole.
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
       response.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
       response.end('Something went wrong reading that.\n');
     });
@@ -164,16 +170,16 @@ async function answer(
   if (entry.isDirectory()) {
     const index = join(path, 'index.html');
     try {
-      const found = await stat(index);
-      send(response, index, found.size);
-      return;
+      await stat(index);
     } catch {
       await listRuns(path, asked, response);
       return;
     }
+    await send(response, index);
+    return;
   }
 
-  send(response, path, entry.size);
+  await send(response, path);
 }
 
 /**
@@ -183,14 +189,38 @@ async function answer(
  * whole point of opening it then is that a refresh shows where it has got to.
  * A cached page shows where it had got to.
  */
-function send(response: import('node:http').ServerResponse, path: string, size: number): void {
+async function send(response: import('node:http').ServerResponse, path: string): Promise<void> {
+  // Opened before anything is said, so a file that cannot be read is still a
+  // status rather than a crash: one that is not readable by this user, or one
+  // a run pruned or rewrote between the stat above and this. The length comes
+  // from the file that was opened, not from the one that was looked at.
+  let file;
+  try {
+    file = await open(path, 'r');
+  } catch (error) {
+    const gone = ['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '');
+    response.writeHead(gone ? 404 : 403, { 'content-type': 'text/plain; charset=utf-8' });
+    response.end(gone ? 'Not in this report.\n' : 'Not readable.\n');
+    return;
+  }
+
+  let size;
+  try {
+    size = (await file.stat()).size;
+  } catch (error) {
+    await file.close();
+    throw error;
+  }
+
   response.writeHead(200, {
     'content-type': TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream',
     'content-length': size,
     'cache-control': 'no-store',
   });
 
-  createReadStream(path).pipe(response);
+  // A read that fails halfway, or a reader that hangs up, ends both sides
+  // here rather than as an unhandled 'error' that takes the server down.
+  pipeline(file.createReadStream(), response, () => {});
 }
 
 /**

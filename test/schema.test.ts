@@ -199,3 +199,123 @@ describe('schema accepts', () => {
     );
   });
 });
+
+/**
+ * Every bounded number and every closed block, taken from the schema itself,
+ * so that a bound or a key added to one side and not the other fails here
+ * instead of in somebody's editor — or worse, in a run that takes a value the
+ * editor would have refused.
+ */
+describe('schema and parser agree on every value', () => {
+  type Node = { type?: string; minimum?: number; maximum?: number; exclusiveMinimum?: number };
+  type Block = { properties: Record<string, Node>; additionalProperties?: unknown };
+
+  const top = CONFIG_SCHEMA.properties;
+  const pair = { a: 'https://a.test/', b: 'https://b.test/' };
+  const base = { compare: pair, scenarios: ['/'] };
+
+  /** Where each closed block of the schema sits in a config, and how to fill it in. */
+  const places: { where: string; block: Block; place: (props: Record<string, unknown>) => unknown }[] = [
+    ...(['output', 'browser', 'timeouts', 'diff', 'stability', 'reuse', 'logs', 'markup'] as const).map(
+      (name) => ({
+        where: name,
+        block: top[name] as unknown as Block,
+        place: (props: Record<string, unknown>) => ({ ...base, [name]: props }),
+      })
+    ),
+    {
+      where: 'compare',
+      block: top.compare as unknown as Block,
+      place: (props) => ({ scenarios: ['/'], compare: { ...pair, ...props } }),
+    },
+    {
+      where: 'a side',
+      block: top.compare.properties.a.oneOf[1] as unknown as Block,
+      place: (props) => ({ ...base, compare: { ...pair, a: { url: pair.a, ...props } } }),
+    },
+    {
+      where: 'a viewport',
+      block: top.browser.properties.viewports.additionalProperties as unknown as Block,
+      place: (props) => {
+        // The long and the short spelling of one size: the parser reads the
+        // long one first, so the short one is only tried on its own.
+        const size: Record<string, unknown> = { width: 1440, height: 900 };
+        if ('w' in props) delete size['width'];
+        if ('h' in props) delete size['height'];
+        return { ...base, browser: { viewports: { desktop: { ...size, ...props } } } };
+      },
+    },
+    {
+      where: 'a scenario',
+      block: CONFIG_SCHEMA.$defs.scenario as unknown as Block,
+      place: (props) => ({ compare: pair, scenarios: [{ path: '/', ...props }] }),
+    },
+    {
+      where: 'a group',
+      block: top.groups.items as unknown as Block,
+      place: (props) => ({ groups: [{ name: 'g', compare: pair, scenarios: ['/'], ...props }] }),
+    },
+    {
+      where: "a group's diff",
+      block: top.groups.items.properties.diff as unknown as Block,
+      place: (props) => ({ groups: [{ name: 'g', compare: pair, scenarios: ['/'], diff: props }] }),
+    },
+    {
+      where: 'a beforeEach group',
+      block: CONFIG_SCHEMA.$defs.beforeEachGroup as unknown as Block,
+      place: (props) => ({ ...base, beforeEach: [{ steps: [{ click: '#x' }], ...props }] }),
+    },
+  ];
+
+  /**
+   * Stated on purpose and nowhere else: the parser rounds a worker count
+   * down and never below one, so a stray 0 runs one at a time rather than
+   * stopping the run, while an editor still steers towards a whole number.
+   */
+  const lenient = new Set(['stability.workers']);
+
+  function parserAccepts(config: unknown): boolean {
+    const file = join(workDir, `bounds-${counter++}.yaml`);
+    writeFileSync(file, JSON.stringify(config));
+    try {
+      loadConfig(file);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function candidates(node: Node): number[] {
+    const values = new Set([-1, 0, 0.5, 2, 1000]);
+    if (node.minimum !== undefined) values.add(node.minimum).add(node.minimum - 1);
+    if (node.maximum !== undefined) values.add(node.maximum).add(node.maximum + 1);
+    if (node.exclusiveMinimum !== undefined) values.add(node.exclusiveMinimum).add(node.exclusiveMinimum + 0.5);
+    return [...values];
+  }
+
+  for (const { where, block, place } of places) {
+    it(`on the numbers in ${where}`, () => {
+      for (const [key, node] of Object.entries(block.properties)) {
+        if (node.type !== 'number' && node.type !== 'integer') continue;
+        if (lenient.has(`${where}.${key}`)) continue;
+
+        for (const value of candidates(node)) {
+          const config = place({ [key]: value });
+          assert.equal(
+            parserAccepts(config),
+            validate(config) === true,
+            `${where}.${key}: ${value} — the schema ${validate(config) ? 'accepts' : 'refuses'} it, the parser does not agree`
+          );
+        }
+      }
+    });
+
+    if (block.additionalProperties === false) {
+      it(`on a key ${where} does not have`, () => {
+        const config = place({ notAnOption: true });
+        assert.equal(validate(config), false, `the schema takes an unknown key in ${where}`);
+        assert.equal(parserAccepts(config), false, `the parser takes an unknown key in ${where}`);
+      });
+    }
+  }
+});

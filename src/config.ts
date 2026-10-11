@@ -37,6 +37,43 @@ const STEP_KEYS = new Set([
   'setViewport', 'screenshot',
 ]);
 
+/**
+ * The keys each block reads, so that one it does not is said rather than
+ * dropped. Older spellings that are still read are listed with the rest.
+ */
+const KEYS = {
+  top: [
+    'compare', 'output', 'browser', 'timeouts', 'diff', 'stability', 'reuse', 'logs', 'markup',
+    'beforeEach', 'groups', 'scenarios', 'viewports', 'console',
+  ],
+  compare: ['a', 'b'],
+  side: ['url', 'label', 'headers', 'cookies', 'basicAuth', 'storageState', 'name'],
+  basicAuth: ['username', 'password'],
+  cookie: ['name', 'value', 'domain', 'path', 'url'],
+  output: ['dir', 'runFolder', 'runId', 'title', 'images'],
+  browser: [
+    'engine', 'headless', 'viewports', 'colorScheme', 'reducedMotion', 'locale', 'timezone',
+    'userAgent', 'ignoreHTTPSErrors',
+  ],
+  viewport: ['width', 'height', 'w', 'h', 'deviceScaleFactor', 'dpr'],
+  timeouts: ['action', 'comparison', 'run'],
+  diff: ['threshold', 'pixelThreshold', 'ignoreAntialiasing', 'alignRows', 'mask', 'hide', 'remove'],
+  stability: ['freeze', 'triggerLazyLoad', 'retries', 'workers', 'sequential'],
+  reuse: ['side', 'from', 'maxAge', 'sides'],
+  logs: ['enabled', 'levels', 'ignore', 'max', 'failOnDifference'],
+  markup: [
+    'enabled', 'failOnDifference', 'ignoreComments', 'normalizeWhitespace', 'sortAttributes',
+    'ignoreBaseUrl', 'ignoreAttributes', 'ignoreSelectors', 'maxHunksInReport',
+  ],
+  beforeEach: ['name', 'when', 'timeout', 'required', 'once', 'side', 'steps'],
+  group: ['name', 'compare', 'viewports', 'waitUntil', 'steps', 'fullPage', 'waitForTimeout', 'diff', 'scenarios'],
+  groupDiff: ['threshold', 'mask', 'hide', 'remove'],
+  scenario: [
+    'name', 'path', 'a', 'b', 'viewports', 'steps', 'fullPage', 'clip', 'mask', 'hide', 'remove',
+    'threshold', 'waitForTimeout', 'waitUntil', 'skip', 'only', 'viewport',
+  ],
+} as const;
+
 export function loadConfig(file: string): Config {
   const path = resolve(file);
   let source: string;
@@ -72,12 +109,13 @@ export function loadConfig(file: string): Config {
  * one flat object with no optionals left.
  */
 function normalise(raw: Record<string, unknown>, configDir: string, file: string): Config {
-  const browser = block(raw, 'browser');
-  const timeouts = block(raw, 'timeouts');
-  const diff = block(raw, 'diff');
-  const output = block(raw, 'output');
-  const stability = block(raw, 'stability');
-  const reuse = block(raw, 'reuse');
+  onlyKnown(raw, KEYS.top, '');
+  const browser = block(raw, 'browser', KEYS.browser);
+  const timeouts = block(raw, 'timeouts', KEYS.timeouts);
+  const diff = block(raw, 'diff', KEYS.diff);
+  const output = block(raw, 'output', KEYS.output);
+  const stability = block(raw, 'stability', KEYS.stability);
+  const reuse = block(raw, 'reuse', KEYS.reuse);
 
   // Viewports live with the browser, but the older top-level spelling is
   // accepted because nothing else could reasonably mean.
@@ -89,6 +127,7 @@ function normalise(raw: Record<string, unknown>, configDir: string, file: string
   if (!isRecord(compare)) {
     throw new ConfigError('`compare` must be a mapping with the two sides');
   }
+  onlyKnown(compare, KEYS.compare, 'compare');
 
   // One site or two is not a setting, it is what the file names. A config
   // with no side B anywhere has nothing to compare against, and every page
@@ -98,7 +137,7 @@ function normalise(raw: Record<string, unknown>, configDir: string, file: string
   const a = parseSide(compare, 'a', configDir);
   const b = mode === 'compare' ? parseSide(compare, 'b', configDir) : null;
 
-  const globalThreshold = num(diff['threshold'], 0, 'diff.threshold');
+  const globalThreshold = num(diff['threshold'], 0, 'diff.threshold', SHARE);
   const rawScenarios = raw['scenarios'] ?? [];
   if (!Array.isArray(rawScenarios)) {
     throw new ConfigError('`scenarios` must be a list');
@@ -194,16 +233,16 @@ function normalise(raw: Record<string, unknown>, configDir: string, file: string
     viewports,
     scenarios,
     beforeEach,
-    pixelThreshold: num(diff['pixelThreshold'], 0.1, 'diff.pixelThreshold'),
+    pixelThreshold: num(diff['pixelThreshold'], 0.1, 'diff.pixelThreshold', SHARE),
     threshold: globalThreshold,
     ignoreAntialiasing: bool(diff['ignoreAntialiasing'], true, 'diff.ignoreAntialiasing'),
     alignRows: bool(diff['alignRows'], true, 'diff.alignRows'),
     browser: enumValue(browser['engine'], ['chromium', 'firefox', 'webkit'], 'chromium', 'browser.engine'),
     headless: bool(browser['headless'], true, 'browser.headless'),
-    timeout: num(timeouts['action'], 30_000, 'timeouts.action'),
-    comparisonTimeout: num(timeouts['comparison'], 180_000, 'timeouts.comparison'),
-    runTimeout: num(timeouts['run'], 0, 'timeouts.run'),
-    retries: num(stability['retries'], 0, 'stability.retries'),
+    timeout: num(timeouts['action'], 30_000, 'timeouts.action', MILLISECONDS),
+    comparisonTimeout: num(timeouts['comparison'], 180_000, 'timeouts.comparison', MILLISECONDS),
+    runTimeout: num(timeouts['run'], 0, 'timeouts.run', MILLISECONDS),
+    retries: num(stability['retries'], 0, 'stability.retries', { min: 0, whole: true }),
     freeze: bool(stability['freeze'], true, 'stability.freeze'),
     triggerLazyLoad: bool(stability['triggerLazyLoad'], true, 'stability.triggerLazyLoad'),
     sequential: bool(stability['sequential'], false, 'stability.sequential'),
@@ -313,57 +352,82 @@ export function parseDuration(value: unknown, fallback: number, where: string): 
 }
 
 /** Reads one of the grouping blocks, tolerating its absence. */
-function block(raw: Record<string, unknown>, name: string, where = ''): Record<string, unknown> {
+function block(
+  raw: Record<string, unknown>,
+  name: string,
+  keys: readonly string[],
+  where = ''
+): Record<string, unknown> {
   const value = raw[name];
   if (value === undefined || value === null) return {};
-  if (!isRecord(value)) throw new ConfigError(`\`${where ? `${where}.` : ''}${name}\` must be a mapping`);
+  const at = `${where ? `${where}.` : ''}${name}`;
+  if (!isRecord(value)) throw new ConfigError(`\`${at}\` must be a mapping`);
+  onlyKnown(value, keys, at);
   return value;
 }
 
 /**
  * Sides accept both the flat shorthand (`a: https://…`) and the object form
- * carrying headers, cookies and per-side steps.
+ * carrying a label, headers, cookies and credentials.
  */
-function parseSide(raw: Record<string, unknown>, side: 'a' | 'b', configDir: string): SideConfig {
+function parseSide(
+  raw: Record<string, unknown>,
+  side: 'a' | 'b',
+  configDir: string,
+  where = 'compare'
+): SideConfig {
   const value = raw[side];
+  const at = `${where}.${side}`;
   // No side at all is fine; the scenarios then have to carry the full URLs.
   if (value === undefined || value === null) {
     return emptySide('', side.toUpperCase());
   }
 
   if (typeof value === 'string') {
-    return emptySide(assertUrl(value, `compare.${side}`), side.toUpperCase());
+    return emptySide(assertUrl(value, at), side.toUpperCase());
   }
 
   if (!isRecord(value)) {
-    throw new ConfigError(`\`compare.${side}\` must be a URL string or a mapping, got ${describe(value)}`);
+    throw new ConfigError(`\`${at}\` must be a URL string or a mapping, got ${describe(value)}`);
   }
 
   if (value['baseUrl'] !== undefined) {
-    throw new ConfigError(`\`compare.${side}.baseUrl\` is called \`url\` now`);
+    throw new ConfigError(`\`${at}.baseUrl\` is called \`url\` now`);
   }
+
+  // Steps for one side are what a beforeEach entry limited to that side
+  // does; a side's own `steps` was never read, which is worse than refused.
+  if (value['steps'] !== undefined) {
+    throw new ConfigError(
+      `\`${at}.steps\` is not an option. Steps for one side go under \`beforeEach\`, as an entry ` +
+        `with \`side: ${side}\` and the steps in its \`steps\`.`
+    );
+  }
+
+  onlyKnown(value, KEYS.side, at);
 
   const baseUrl = value['url'];
   if (baseUrl !== undefined && baseUrl !== null && typeof baseUrl !== 'string') {
-    throw new ConfigError(`\`compare.${side}.url\` must be a string`);
+    throw new ConfigError(`\`${at}.url\` must be a string`);
   }
 
   const basicAuth = value['basicAuth'];
   let auth: SideConfig['basicAuth'] = null;
   if (basicAuth !== undefined && basicAuth !== null) {
     if (!isRecord(basicAuth) || typeof basicAuth['username'] !== 'string' || typeof basicAuth['password'] !== 'string') {
-      throw new ConfigError(`\`compare.${side}.basicAuth\` must have \`username\` and \`password\``);
+      throw new ConfigError(`\`${at}.basicAuth\` must have \`username\` and \`password\``);
     }
+    onlyKnown(basicAuth, KEYS.basicAuth, `${at}.basicAuth`);
     auth = { username: basicAuth['username'], password: basicAuth['password'] };
   }
 
-  const storageState = optionalStr(value['storageState'], `compare.${side}.storageState`);
+  const storageState = optionalStr(value['storageState'], `${at}.storageState`);
 
   return {
-    label: str(value['label'] ?? value['name'], side.toUpperCase(), `compare.${side}.label`),
-    baseUrl: typeof baseUrl === 'string' ? assertUrl(baseUrl, `compare.${side}.url`) : '',
-    headers: parseHeaders(value['headers'], `compare.${side}.headers`),
-    cookies: parseCookies(value['cookies'], `compare.${side}.cookies`),
+    label: str(value['label'] ?? value['name'], side.toUpperCase(), `${at}.label`),
+    baseUrl: typeof baseUrl === 'string' ? assertUrl(baseUrl, `${at}.url`) : '',
+    headers: parseHeaders(value['headers'], `${at}.headers`),
+    cookies: parseCookies(value['cookies'], `${at}.cookies`),
     basicAuth: auth,
     storageState: storageState === null ? null : resolvePath(storageState, configDir),
   };
@@ -438,6 +502,7 @@ function parseGroups(value: unknown, inherited: Inherited, configDir: string, mo
     if (!isRecord(entry)) {
       throw new ConfigError(`${at} must be a mapping with a \`name\` and \`scenarios\``);
     }
+    onlyKnown(entry, KEYS.group, at);
 
     const name = entry['name'];
     if (typeof name !== 'string' || name === '') {
@@ -453,15 +518,16 @@ function parseGroups(value: unknown, inherited: Inherited, configDir: string, mo
     if (compare !== undefined && !isRecord(compare)) {
       throw new ConfigError(`${at}.compare must be a mapping with the two sides`);
     }
+    if (compare) onlyKnown(compare, KEYS.compare, `${at}.compare`);
 
     const sides = compare
       ? {
-          a: parseSide(compare, 'a', configDir),
-          b: mode === 'compare' ? parseSide(compare, 'b', configDir) : null,
+          a: parseSide(compare, 'a', configDir, `${at}.compare`),
+          b: mode === 'compare' ? parseSide(compare, 'b', configDir, `${at}.compare`) : null,
         }
       : { a: null, b: null };
 
-    const diff = block(entry, 'diff', at);
+    const diff = block(entry, 'diff', KEYS.groupDiff, at);
 
     // A group may set what its pages have in common: two production sites hold
     // a sub-resource open and need waitUntil: domcontentloaded, and writing
@@ -478,7 +544,12 @@ function parseGroups(value: unknown, inherited: Inherited, configDir: string, mo
             ),
       steps: [...inherited.defaults.steps, ...parseSteps(entry['steps'], `${at}.steps`)],
       fullPage: bool(entry['fullPage'], inherited.defaults.fullPage, `${at}.fullPage`),
-      waitForTimeout: num(entry['waitForTimeout'], inherited.defaults.waitForTimeout, `${at}.waitForTimeout`),
+      waitForTimeout: num(
+        entry['waitForTimeout'],
+        inherited.defaults.waitForTimeout,
+        `${at}.waitForTimeout`,
+        MILLISECONDS
+      ),
     };
 
     const own: Inherited = {
@@ -487,7 +558,7 @@ function parseGroups(value: unknown, inherited: Inherited, configDir: string, mo
         entry['viewports'] === undefined
           ? inherited.viewports
           : resolveViewportNames(entry['viewports'], inherited.viewports, `${at}.viewports`),
-      threshold: num(diff['threshold'], inherited.threshold, `${at}.diff.threshold`),
+      threshold: num(diff['threshold'], inherited.threshold, `${at}.diff.threshold`, SHARE),
       mask: [...inherited.mask, ...strList(diff['mask'], `${at}.diff.mask`)],
       hide: [...inherited.hide, ...strList(diff['hide'], `${at}.diff.hide`)],
       remove: [...inherited.remove, ...strList(diff['remove'], `${at}.diff.remove`)],
@@ -558,6 +629,7 @@ function parseScenario(
       throw new ConfigError(`${where}.${old} is called \`${use}\` now`);
     }
   }
+  onlyKnown(entry, KEYS.scenario, where);
 
   const path = entry['path'];
   const pathA = optionalStr(entry['a'], `${where}.a`);
@@ -578,10 +650,6 @@ function parseScenario(
       ? defaultViewports
       : resolveViewportNames(viewportOverride, defaultViewports, `${where}.viewports`);
 
-  if (viewports.length === 0) {
-    throw new ConfigError(`${where}.viewports must name at least one viewport`);
-  }
-
   return {
     name,
     group: null,
@@ -597,8 +665,8 @@ function parseScenario(
     mask: strList(entry['mask'], `${where}.mask`),
     hide: strList(entry['hide'], `${where}.hide`),
     remove: strList(entry['remove'], `${where}.remove`),
-    threshold: num(entry['threshold'], defaultThreshold, `${where}.threshold`),
-    waitForTimeout: num(entry['waitForTimeout'], 0, `${where}.waitForTimeout`),
+    threshold: num(entry['threshold'], defaultThreshold, `${where}.threshold`, SHARE),
+    waitForTimeout: num(entry['waitForTimeout'], 0, `${where}.waitForTimeout`, MILLISECONDS),
     waitUntil: enumValue(
       entry['waitUntil'],
       ['load', 'domcontentloaded', 'networkidle', 'commit'],
@@ -643,7 +711,7 @@ function parseViewports(value: unknown, where: string): Viewport[] {
     if (typeof name !== 'string') {
       throw new ConfigError(`${at} needs a \`name\`, or declare viewports as a mapping keyed by name`);
     }
-    return parseViewport(entry, name, at);
+    return parseViewport(entry, name, at, [...KEYS.viewport, 'name']);
   });
   return widestFirst(distinctViewports(listed, where));
 }
@@ -683,14 +751,15 @@ function distinctViewports(viewports: Viewport[], where: string): Viewport[] {
   return viewports;
 }
 
-function parseViewport(entry: unknown, name: string, at: string): Viewport {
+function parseViewport(entry: unknown, name: string, at: string, keys: readonly string[] = KEYS.viewport): Viewport {
   if (!isRecord(entry)) {
     throw new ConfigError(`${at} must be a mapping like { width: 375, height: 812 }`);
   }
+  onlyKnown(entry, keys, at);
 
   // `w`/`h` are accepted as shorthand so inline flow-style entries stay short.
-  const width = num(entry['width'] ?? entry['w'], NaN, `${at}.width`);
-  const height = num(entry['height'] ?? entry['h'], NaN, `${at}.height`);
+  const width = num(entry['width'] ?? entry['w'], NaN, `${at}.width`, PIXELS);
+  const height = num(entry['height'] ?? entry['h'], NaN, `${at}.height`, PIXELS);
   if (!Number.isFinite(width) || !Number.isFinite(height)) {
     throw new ConfigError(`${at} needs numeric \`width\` and \`height\``);
   }
@@ -699,7 +768,9 @@ function parseViewport(entry: unknown, name: string, at: string): Viewport {
     name,
     width,
     height,
-    deviceScaleFactor: num(entry['deviceScaleFactor'] ?? entry['dpr'], 1, `${at}.deviceScaleFactor`),
+    deviceScaleFactor: num(entry['deviceScaleFactor'] ?? entry['dpr'], 1, `${at}.deviceScaleFactor`, {
+      above: 0,
+    }),
   };
 }
 
@@ -719,8 +790,20 @@ function resolveViewportNames(value: unknown, declared: Viewport[], where: strin
     if (!viewport) {
       throw new ConfigError(`${at} refers to unknown viewport "${name}". Declared: ${[...known.keys()].join(', ')}`);
     }
+    if (names.indexOf(name) !== index) {
+      throw new ConfigError(`${where} names "${name}" twice`);
+    }
     return viewport;
   });
+
+  // An empty list is not "all of them": it is no comparison at all, and a run
+  // with nothing in it reports that nothing differs.
+  if (picked.length === 0) {
+    throw new ConfigError(
+      `\`${where}\` must name at least one viewport, or be left out to take all of them. ` +
+        `Declared: ${[...known.keys()].join(', ')}`
+    );
+  }
 
   return widestFirst(picked);
 }
@@ -772,6 +855,7 @@ function parseCookies(value: unknown, where: string): RawCookie[] {
     if (!isRecord(entry) || typeof entry['name'] !== 'string') {
       throw new ConfigError(`${at} must be a mapping with at least \`name\` and \`value\``);
     }
+    onlyKnown(entry, KEYS.cookie, at);
     return {
       name: entry['name'],
       value: String(entry['value'] ?? ''),
@@ -792,6 +876,7 @@ function parseMarkup(value: unknown): MarkupOptions {
   if (!isRecord(raw)) {
     throw new ConfigError('`markup` must be a mapping');
   }
+  onlyKnown(raw, KEYS.markup, 'markup');
 
   return {
     enabled: bool(raw['enabled'], true, 'markup.enabled'),
@@ -802,7 +887,7 @@ function parseMarkup(value: unknown): MarkupOptions {
     sortAttributes: bool(raw['sortAttributes'], false, 'markup.sortAttributes'),
     ignoreBaseUrl: bool(raw['ignoreBaseUrl'], true, 'markup.ignoreBaseUrl'),
     failOnDifference: bool(raw['failOnDifference'], false, 'markup.failOnDifference'),
-    maxHunksInReport: num(raw['maxHunksInReport'], 200, 'markup.maxHunksInReport'),
+    maxHunksInReport: num(raw['maxHunksInReport'], 200, 'markup.maxHunksInReport', { min: 1, whole: true }),
   };
 }
 
@@ -830,6 +915,7 @@ function parseLogs(value: unknown): LogOptions {
   if (!isRecord(raw)) {
     throw new ConfigError('`logs` must be a mapping');
   }
+  onlyKnown(raw, KEYS.logs, 'logs');
 
   const levels =
     raw['levels'] === undefined
@@ -848,7 +934,7 @@ function parseLogs(value: unknown): LogOptions {
     enabled: bool(raw['enabled'], true, 'logs.enabled'),
     levels,
     ignore: strList(raw['ignore'], 'logs.ignore'),
-    max: Math.max(0, Math.floor(num(raw['max'], 50, 'logs.max'))),
+    max: num(raw['max'], 50, 'logs.max', { min: 0, whole: true }),
     failOnDifference: bool(raw['failOnDifference'], false, 'logs.failOnDifference'),
   };
 }
@@ -887,6 +973,7 @@ function parseBeforeEach(value: unknown): BeforeEach[] {
       };
     }
 
+    onlyKnown(entry, KEYS.beforeEach, at);
     const side = optionalStr(entry['side'], `${at}.side`);
     if (side !== null && side !== 'a' && side !== 'b') {
       throw new ConfigError(`${at}.side must be "a" or "b"`);
@@ -902,7 +989,7 @@ function parseBeforeEach(value: unknown): BeforeEach[] {
     return {
       name: str(entry['name'], when ?? `beforeEach ${index + 1}`, `${at}.name`),
       when,
-      timeout: num(entry['timeout'], 5000, `${at}.timeout`),
+      timeout: num(entry['timeout'], 5000, `${at}.timeout`, MILLISECONDS),
       required: bool(entry['required'], false, `${at}.required`),
       once: bool(entry['once'], false, `${at}.once`),
       side,
@@ -1027,12 +1114,100 @@ function strList(value: unknown, where: string): string[] {
   });
 }
 
-function num(value: unknown, fallback: number, where: string): number {
+/**
+ * What a number may be. The same bounds the schema states, because a value
+ * the parser takes without a word is a value the run then acts on: a negative
+ * retry count left nothing to attempt, and a threshold of 7 passed everything.
+ */
+interface Range {
+  min?: number;
+  max?: number;
+  /** Has to be greater than this, not equal to it. */
+  above?: number;
+  whole?: boolean;
+}
+
+const SHARE: Range = { min: 0, max: 1 };
+const MILLISECONDS: Range = { min: 0 };
+const PIXELS: Range = { min: 1 };
+
+function num(value: unknown, fallback: number, where: string, range: Range = {}): number {
   if (value === undefined || value === null) return fallback;
-  if (typeof value !== 'number' || Number.isNaN(value)) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new ConfigError(`\`${where}\` must be a number`);
   }
+
+  const { min, max, above, whole } = range;
+  if (
+    (whole === true && !Number.isInteger(value)) ||
+    (min !== undefined && value < min) ||
+    (max !== undefined && value > max) ||
+    (above !== undefined && value <= above)
+  ) {
+    const kind = whole ? 'a whole number' : 'a number';
+    const bounds =
+      min !== undefined && max !== undefined
+        ? ` from ${min} to ${max}`
+        : min !== undefined
+          ? ` of ${min} or more`
+          : above !== undefined
+            ? ` above ${above}`
+            : '';
+    throw new ConfigError(`\`${where}\` must be ${kind}${bounds}, got ${value}`);
+  }
   return value;
+}
+
+/**
+ * Refuses a key the parser does not read.
+ *
+ * A misspelt option is otherwise dropped without a word, and the run goes on
+ * under the default the file meant to change — `diff.treshold: 0.05` and a
+ * run that fails on every page for a reason the file seems to have dealt
+ * with. Said with the nearest real key when there is one.
+ */
+function onlyKnown(value: Record<string, unknown>, keys: readonly string[], where: string): void {
+  for (const key of Object.keys(value)) {
+    if (keys.includes(key)) continue;
+    const at = where ? `${where}.${key}` : key;
+    const near = closest(key, keys);
+    throw new ConfigError(
+      near
+        ? `\`${at}\` is not an option; did you mean \`${near}\`?`
+        : `\`${at}\` is not an option. Known${where ? ` under \`${where}\`` : ' at the top level'}: ${keys.join(', ')}`
+    );
+  }
+}
+
+function closest(key: string, keys: readonly string[]): string | null {
+  let best: string | null = null;
+  let bestDistance = Infinity;
+  for (const candidate of keys) {
+    const distance =
+      candidate.toLowerCase() === key.toLowerCase() ? 0 : editDistance(key.toLowerCase(), candidate.toLowerCase());
+    if (distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  // A guess at a one-letter key from another one-letter key is no help.
+  return bestDistance <= 2 && bestDistance < key.length / 2 ? best : null;
+}
+
+function editDistance(left: string, right: string): number {
+  let row = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= right.length; j++) {
+      next[j] = Math.min(
+        row[j]! + 1,
+        next[j - 1]! + 1,
+        row[j - 1]! + (left[i - 1] === right[j - 1] ? 0 : 1)
+      );
+    }
+    row = next;
+  }
+  return row[right.length]!;
 }
 
 function bool(value: unknown, fallback: boolean, where: string): boolean {

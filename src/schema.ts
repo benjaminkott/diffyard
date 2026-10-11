@@ -176,12 +176,12 @@ export const CONFIG_SCHEMA = {
           additionalProperties: {
             type: 'object',
             properties: {
-              width: { type: 'number' },
-              height: { type: 'number' },
-              w: { type: 'number' },
-              h: { type: 'number' },
-              deviceScaleFactor: { type: 'number', default: 1 },
-              dpr: { type: 'number' },
+              width: { type: 'number', minimum: 1 },
+              height: { type: 'number', minimum: 1 },
+              w: { type: 'number', minimum: 1 },
+              h: { type: 'number', minimum: 1 },
+              deviceScaleFactor: { type: 'number', exclusiveMinimum: 0, default: 1 },
+              dpr: { type: 'number', exclusiveMinimum: 0 },
             },
             additionalProperties: false,
           },
@@ -204,13 +204,19 @@ export const CONFIG_SCHEMA = {
       type: 'object',
       description: 'All values in milliseconds.',
       properties: {
-        action: { type: 'number', default: 30000, description: 'Per Playwright action.' },
+        action: { type: 'number', minimum: 0, default: 30000, description: 'Per Playwright action.' },
         comparison: {
           type: 'number',
+          minimum: 0,
           default: 180000,
           description: 'Hard limit for one scenario/viewport pair. 0 disables it.',
         },
-        run: { type: 'number', default: 0, description: 'Hard limit for the whole run. 0 disables it.' },
+        run: {
+          type: 'number',
+          minimum: 0,
+          default: 0,
+          description: 'Hard limit for the whole run. 0 disables it.',
+        },
       },
       additionalProperties: false,
     },
@@ -340,7 +346,7 @@ export const CONFIG_SCHEMA = {
           items: { type: 'string' },
           description: 'Lines containing any of these are dropped: consent tools, analytics.',
         },
-        max: { type: 'number', default: 50, description: 'Distinct lines kept per side.' },
+        max: { type: 'integer', minimum: 0, default: 50, description: 'Distinct lines kept per side.' },
         failOnDifference: {
           type: 'boolean',
           default: false,
@@ -420,6 +426,8 @@ export const CONFIG_SCHEMA = {
           viewports: {
             type: 'array',
             items: { type: 'string' },
+            minItems: 1,
+            uniqueItems: true,
             description: 'Names from browser.viewports; defaults to all of them.',
           },
           waitUntil: {
@@ -430,7 +438,7 @@ export const CONFIG_SCHEMA = {
           },
           steps: { $ref: '#/$defs/steps', description: 'Run on every page of this group.' },
           fullPage: { type: 'boolean', description: 'For every page of this group.' },
-          waitForTimeout: { type: 'number', description: 'For every page of this group.' },
+          waitForTimeout: { type: 'number', minimum: 0, description: 'For every page of this group.' },
           diff: {
             type: 'object',
             description: 'Thresholds and masks for this group only.',
@@ -503,7 +511,7 @@ export const CONFIG_SCHEMA = {
             'Selector deciding whether this applies. The group runs once it becomes visible; ' +
             'if it never does, the group is skipped. Without it, the group always runs.',
         },
-        timeout: { type: 'number', default: 5000, description: 'How long to wait for the trigger.' },
+        timeout: { type: 'number', minimum: 0, default: 5000, description: 'How long to wait for the trigger.' },
         required: { type: 'boolean', default: false, description: 'Fail when the trigger never appeared.' },
         once: {
           type: 'boolean',
@@ -539,6 +547,8 @@ export const CONFIG_SCHEMA = {
         viewports: {
           type: 'array',
           items: { type: 'string' },
+          minItems: 1,
+          uniqueItems: true,
           description: 'Names of viewports declared under browser.viewports. Defaults to all of them.',
         },
         steps: { $ref: '#/$defs/steps' },
@@ -552,7 +562,7 @@ export const CONFIG_SCHEMA = {
         hide: SELECTOR_LIST,
         remove: SELECTOR_LIST,
         threshold: { type: 'number', minimum: 0, maximum: 1 },
-        waitForTimeout: { type: 'number', description: 'Settle time before the screenshot.' },
+        waitForTimeout: { type: 'number', minimum: 0, description: 'Settle time before the screenshot.' },
         waitUntil: {
           enum: ['load', 'domcontentloaded', 'networkidle', 'commit'],
           default: 'networkidle',

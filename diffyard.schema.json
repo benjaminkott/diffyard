@@ -237,23 +237,29 @@
             "type": "object",
             "properties": {
               "width": {
-                "type": "number"
+                "type": "number",
+                "minimum": 1
               },
               "height": {
-                "type": "number"
+                "type": "number",
+                "minimum": 1
               },
               "w": {
-                "type": "number"
+                "type": "number",
+                "minimum": 1
               },
               "h": {
-                "type": "number"
+                "type": "number",
+                "minimum": 1
               },
               "deviceScaleFactor": {
                 "type": "number",
+                "exclusiveMinimum": 0,
                 "default": 1
               },
               "dpr": {
-                "type": "number"
+                "type": "number",
+                "exclusiveMinimum": 0
               }
             },
             "additionalProperties": false
@@ -300,16 +306,19 @@
       "properties": {
         "action": {
           "type": "number",
+          "minimum": 0,
           "default": 30000,
           "description": "Per Playwright action."
         },
         "comparison": {
           "type": "number",
+          "minimum": 0,
           "default": 180000,
           "description": "Hard limit for one scenario/viewport pair. 0 disables it."
         },
         "run": {
           "type": "number",
+          "minimum": 0,
           "default": 0,
           "description": "Hard limit for the whole run. 0 disables it."
         }
@@ -505,7 +514,8 @@
           "description": "Lines containing any of these are dropped: consent tools, analytics."
         },
         "max": {
-          "type": "number",
+          "type": "integer",
+          "minimum": 0,
           "default": 50,
           "description": "Distinct lines kept per side."
         },
@@ -762,6 +772,8 @@
             "items": {
               "type": "string"
             },
+            "minItems": 1,
+            "uniqueItems": true,
             "description": "Names from browser.viewports; defaults to all of them."
           },
           "waitUntil": {
@@ -783,6 +795,7 @@
           },
           "waitForTimeout": {
             "type": "number",
+            "minimum": 0,
             "description": "For every page of this group."
           },
           "diff": {
@@ -1070,6 +1083,7 @@
         },
         "timeout": {
           "type": "number",
+          "minimum": 0,
           "default": 5000,
           "description": "How long to wait for the trigger."
         },
@@ -1123,6 +1137,8 @@
           "items": {
             "type": "string"
           },
+          "minItems": 1,
+          "uniqueItems": true,
           "description": "Names of viewports declared under browser.viewports. Defaults to all of them."
         },
         "steps": {
@@ -1186,6 +1202,7 @@
         },
         "waitForTimeout": {
           "type": "number",
+          "minimum": 0,
           "description": "Settle time before the screenshot."
         },
         "waitUntil": {

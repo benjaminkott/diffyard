@@ -898,3 +898,84 @@ scenarios:
     );
   });
 });
+
+/**
+ * A value the parser takes without a word is a value the run acts on: a
+ * negative retry count left nothing to attempt, a threshold of 7 passed every
+ * page, and a misspelt key left the default it meant to change in place.
+ */
+describe('values the run cannot act on', () => {
+  const PAIR = `compare:\n  a: https://a.test/\n  b: https://b.test/\n`;
+
+  function rejects(yaml: string, message: RegExp): void {
+    assert.throws(
+      () => load(yaml),
+      (error: unknown) => error instanceof ConfigError && message.test((error as Error).message),
+      yaml
+    );
+  }
+
+  it('refuses a number outside what the option means', () => {
+    rejects(`${PAIR}diff:\n  threshold: 7\nscenarios: [/]\n`, /`diff\.threshold` must be a number from 0 to 1, got 7/);
+    rejects(`${PAIR}stability:\n  retries: -3\nscenarios: [/]\n`, /`stability\.retries` must be a whole number of 0 or more/);
+    rejects(`${PAIR}stability:\n  retries: 1.5\nscenarios: [/]\n`, /`stability\.retries` must be a whole number/);
+    rejects(`${PAIR}timeouts:\n  comparison: -5\nscenarios: [/]\n`, /`timeouts\.comparison` must be a number of 0 or more/);
+    rejects(
+      `${PAIR}scenarios:\n  - name: x\n    path: /\n    threshold: -0.1\n`,
+      /`scenarios\[0\]\.threshold` must be a number from 0 to 1/
+    );
+    rejects(
+      `${PAIR}browser:\n  viewports:\n    phone: { width: 0, height: 812 }\nscenarios: [/]\n`,
+      /`browser\.viewports\.phone\.width` must be a number of 1 or more/
+    );
+  });
+
+  it('still takes the edges of each range', () => {
+    const config = load(
+      `${PAIR}diff:\n  threshold: 1\n  pixelThreshold: 0\nstability:\n  retries: 0\ntimeouts:\n  comparison: 0\nscenarios: [/]\n`
+    );
+    assert.equal(config.threshold, 1);
+    assert.equal(config.pixelThreshold, 0);
+    assert.equal(config.comparisonTimeout, 0);
+  });
+
+  it('refuses a group that names no viewport', () => {
+    rejects(
+      `groups:\n  - name: shop\n    compare:\n      a: https://a.test/\n      b: https://b.test/\n    viewports: []\n    scenarios:\n      - /\n`,
+      /`groups\[0\]\.viewports` must name at least one viewport/
+    );
+  });
+
+  it('refuses a scenario that names no viewport', () => {
+    rejects(`${PAIR}scenarios:\n  - name: x\n    path: /\n    viewports: []\n`, /must name at least one viewport/);
+  });
+
+  it('names the key it does not know, and the one that was meant', () => {
+    rejects(`${PAIR}diff:\n  treshold: 0.05\nscenarios: [/]\n`, /`diff\.treshold` is not an option; did you mean `threshold`\?/);
+    rejects(`${PAIR}browsr: {}\nscenarios: [/]\n`, /`browsr` is not an option; did you mean `browser`\?/);
+    rejects(`${PAIR}scenarios:\n  - name: x\n    pth: /\n`, /`scenarios\[0\]\.pth` is not an option; did you mean `path`\?/);
+    rejects(
+      `groups:\n  - name: shop\n    compare:\n      a: https://a.test/\n      b: https://b.test/\n    mask: [.x]\n    scenarios: [/]\n`,
+      /`groups\[0\]\.mask` is not an option\. Known under `groups\[0\]`:/
+    );
+  });
+
+  it('says where steps for one side go', () => {
+    rejects(
+      `compare:\n  a:\n    url: https://a.test/\n    steps:\n      - click: .x\n  b: https://b.test/\nscenarios: [/]\n`,
+      /`compare\.a\.steps` is not an option.*`beforeEach`.*`side: a`/s
+    );
+  });
+
+  it('still reads the older spellings', () => {
+    const config = load(
+      `compare:\n  a: { url: https://a.test/, name: old }\n  b: https://b.test/\n` +
+        `viewports:\n  phone: { w: 375, h: 812, dpr: 2 }\nconsole:\n  max: 10\nreuse:\n  sides: a\n` +
+        `scenarios:\n  - name: x\n    path: /\n    viewport: phone\n`
+    );
+    assert.equal(config.a.label, 'old');
+    assert.equal(config.viewports[0]?.deviceScaleFactor, 2);
+    assert.equal(config.logs.max, 10);
+    assert.deepEqual(config.reuse.sides, ['a']);
+  });
+});

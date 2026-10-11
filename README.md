@@ -380,8 +380,8 @@ screenshot is taken:
 `addStyle` · `setViewport`
 
 Each step accepts `timeout` and `optional: true` (do not fail the scenario when
-the step cannot run). Steps can be attached globally (`beforeEach`), per side
-(`compare.a.steps`) or per scenario.
+the step cannot run). Steps can be attached globally (`beforeEach`), to one
+side (a `beforeEach` entry with `side: a`), per group or per scenario.
 
 ### beforeEach
 

@@ -73,9 +73,9 @@ markup:
   enabled: false
 stability:
   triggerLazyLoad: false
-waitUntil: domcontentloaded
 scenarios:
-  - /
+  - path: /
+    waitUntil: domcontentloaded
 `
     );
 

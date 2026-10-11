@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { resolveUrl } from './config.js';
 import type { Step } from './types.js';
 
 /**
@@ -6,8 +7,11 @@ import type { Step } from './types.js';
  *
  * Steps are intentionally narrow: everything that needs real logic belongs in
  * `evaluate`, so the YAML stays readable and side-effect free otherwise.
+ *
+ * `base` is the address of the side the page belongs to, for a `goto` that
+ * names a path rather than a whole URL.
  */
-export async function runStep(page: Page, step: Step, defaultTimeout: number): Promise<void> {
+export async function runStep(page: Page, step: Step, defaultTimeout: number, base: string): Promise<void> {
   const timeout = 'timeout' in step && typeof step.timeout === 'number' ? step.timeout : defaultTimeout;
 
   if ('click' in step) return void (await page.locator(step.click).first().click({ timeout }));
@@ -70,7 +74,10 @@ export async function runStep(page: Page, step: Step, defaultTimeout: number): P
   }
 
   if ('goto' in step) {
-    return void (await page.goto(step.goto, { timeout, waitUntil: 'networkidle' }));
+    // Read against the side, the way a scenario's path is: `goto: /login` is
+    // the login of whichever system is being photographed, and the browser on
+    // its own has nothing to resolve a bare path against.
+    return void (await page.goto(resolveUrl(base, step.goto), { timeout, waitUntil: 'networkidle' }));
   }
 
   if ('evaluate' in step) {

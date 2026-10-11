@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -136,6 +136,97 @@ scenarios:
     assert.equal(comparison.status, 'error');
     assert.match(comparison.error ?? '', /`hide`.*"text=Live"/);
     assert.doesNotMatch(comparison.error ?? '', /"\.ad"/, 'and only the one at fault');
+  });
+});
+
+describe('a beforeEach that logs in', { concurrency: false }, () => {
+  /**
+   * A site with a login: the front page sends a guest to the login form, the
+   * form sets a session and lands on a dashboard, and every page greets
+   * whoever the session says is there.
+   */
+  async function guarded(): Promise<string> {
+    return site((request, response) => {
+      const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+      const user = /(?:^|;\s*)user=([^;]+)/.exec(request.headers.cookie ?? '')?.[1] ?? null;
+      const greet = (title: string) => page({ title, body: `<h1>${title}</h1><p>Hello, ${user ?? 'guest'}</p>` });
+
+      if (path === '/login') {
+        html(
+          response,
+          page({
+            title: 'Login',
+            body: '<form method="post" action="/session"><input id="user" name="user"><button type="submit">Go</button></form>',
+          })
+        );
+        return;
+      }
+
+      if (path === '/session') {
+        let body = '';
+        request.on('data', (chunk) => (body += chunk));
+        request.on('end', () => {
+          const name = new URLSearchParams(body).get('user') ?? '';
+          response.writeHead(302, { location: '/dashboard', 'set-cookie': `user=${name}; Path=/` });
+          response.end();
+        });
+        return;
+      }
+
+      if (path === '/' && user === null) {
+        response.writeHead(302, { location: '/login' });
+        response.end();
+        return;
+      }
+
+      html(response, greet(path === '/' ? 'Front' : path === '/dashboard' ? 'Dashboard' : 'About'));
+    });
+  }
+
+  it('photographs the scenario page, logged in, under its own answer', async () => {
+    // The example from the README, word for word.
+    const url = await guarded();
+    const result = await runYaml(`
+compare:
+  a: ${url}
+output:
+  dir: $OUT
+browser:
+  viewports:
+    desktop: { width: 500, height: 400 }
+beforeEach:
+  - name: log in
+    once: true
+    steps:
+      - goto: /login
+      - fill: { selector: "#user", value: "editor" }
+      - click: "button[type=submit]"
+      - waitForUrl: "**/dashboard"
+scenarios:
+  - /
+  - /about
+`);
+
+    for (const [path, title] of [
+      ['/', 'Front'],
+      ['/about', 'About'],
+    ] as const) {
+      const comparison = result.comparisons.find((entry) => entry.urlA === `${url}${path.slice(1)}`);
+      assert.ok(comparison, `no comparison for ${path}`);
+      assert.equal(comparison.error, null);
+      assert.equal(comparison.status, 'pass');
+
+      // Not the login form the front page first sent a guest to, nor the
+      // dashboard the login left the browser on.
+      assert.equal(comparison.smoke?.answer.status, 200);
+      assert.equal(comparison.smoke?.answer.redirected, false);
+      assert.equal(comparison.smoke?.answer.path, path);
+
+      assert.ok(comparison.files.htmlA);
+      const document = readFileSync(join(result.outDir, comparison.files.htmlA), 'utf8');
+      assert.match(document, new RegExp(`<h1>\\s*${title}\\s*</h1>`));
+      assert.match(document, /Hello, editor/);
+    }
   });
 });
 

@@ -323,23 +323,48 @@ export class Capturer {
     // gone before anyone is listening.
     const logs = config.logs.enabled ? listen(page, config) : [];
 
-    try {
-      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    // What a `goto` step is read against: the side's own address, or the site
+    // the scenario names in full when the side has none.
+    const base = sideConfig.baseUrl || new URL(url).origin;
+
+    const open = async (): Promise<Answer> => {
       const response = await page.goto(url, { waitUntil: scenario.waitUntil, timeout: config.timeout });
 
       // Read before anything on the page can navigate away from it.
       const answer = answerOf(response ? response.status() : null, url, page.url(), sideConfig.baseUrl);
 
       if (config.freeze) await page.addStyleTag({ content: FREEZE_CSS });
+      return answer;
+    };
 
-      await this.runBeforeEach(page, side, contextKey);
+    try {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      let answer = await open();
+
+      await this.runBeforeEach(page, side, contextKey, base);
+
+      // A beforeEach that navigates -- a login is the usual one -- leaves the
+      // browser on whatever page it finished on. Photographed there, the
+      // scenario was the dashboard a login lands on, recorded under the
+      // answer of a page nobody was looking at any more. So the scenario's
+      // page is opened again, and that answer is the one kept, as is what it
+      // logs: the login page's console is not this page's.
+      //
+      // Once and no more. Entries that are done in this context are skipped
+      // the second time, and a page whose own script moves the address after
+      // loading would otherwise be reloaded for as long as it kept doing so.
+      if (!samePage(page.url(), answer.landed)) {
+        logs.length = 0;
+        answer = await open();
+        await this.runBeforeEach(page, side, contextKey, base);
+      }
 
       // Applied before the scenario's steps as well: an overlay left in place
       // intercepts pointer events and makes every later click time out.
       await hideElements(page, scenario.hide);
       await removeElements(page, scenario.remove);
 
-      await this.runSteps(page, scenario.steps, `scenario "${scenario.name}"`);
+      await this.runSteps(page, scenario.steps, `scenario "${scenario.name}"`, base);
 
       if (config.triggerLazyLoad && scenario.fullPage) await scrollThroughPage(page, config.timeout);
       if (scenario.waitForTimeout > 0) await page.waitForTimeout(scenario.waitForTimeout);
@@ -408,7 +433,7 @@ export class Capturer {
    * cookie need not be repeated, and waiting for its trigger on every later
    * page only costs time.
    */
-  private async runBeforeEach(page: Page, side: Side, contextKey: string): Promise<void> {
+  private async runBeforeEach(page: Page, side: Side, contextKey: string, base: string): Promise<void> {
     for (const [index, entry] of this.config.beforeEach.entries()) {
       if (entry.side !== null && entry.side !== side) continue;
 
@@ -435,15 +460,15 @@ export class Capturer {
         continue;
       }
 
-      await this.runSteps(page, entry.steps, `beforeEach "${entry.name}"`);
+      await this.runSteps(page, entry.steps, `beforeEach "${entry.name}"`, base);
       if (entry.once) this.completed.add(doneKey);
     }
   }
 
-  private async runSteps(page: Page, steps: readonly Step[], origin: string): Promise<void> {
+  private async runSteps(page: Page, steps: readonly Step[], origin: string, base: string): Promise<void> {
     for (const [index, step] of steps.entries()) {
       try {
-        await runStep(page, step, this.config.timeout);
+        await runStep(page, step, this.config.timeout, base);
       } catch (error) {
         if (step.optional === true) continue;
         throw new Error(
@@ -653,6 +678,16 @@ function answerOf(status: number | null, asked: string, landed: string, baseUrl:
  * back as a finding. Separate rules keep the rest standing, and a selector a
  * stylesheet cannot hold is an error that names it, as it is for `remove`.
  */
+/**
+ * Whether the browser is still on the document it landed on. The fragment is
+ * left out: a consent button that writes `#accepted` into the address has not
+ * taken anyone anywhere.
+ */
+function samePage(current: string, landed: string): boolean {
+  const withoutFragment = (address: string) => address.replace(/#.*$/, '');
+  return withoutFragment(current) === withoutFragment(landed);
+}
+
 async function hideElements(page: Page, selectors: string[]): Promise<void> {
   if (selectors.length === 0) return;
 

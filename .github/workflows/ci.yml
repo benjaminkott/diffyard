@@ -5,12 +5,21 @@ on:
     branches: [main]
   pull_request:
 
+# Testing reads the repository and writes nothing back: the token any step
+# can reach is not one that can push, tag or open anything.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
+      # Without the token left behind in .git/config, where every install
+      # script and test that runs afterwards could read it.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:

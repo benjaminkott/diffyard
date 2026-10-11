@@ -5,30 +5,30 @@ on:
   push:
     tags: ['v*']
 
-jobs:
-  publish:
-    runs-on: ubuntu-latest
+# Nothing beyond reading, unless a job below says otherwise for itself.
+permissions:
+  contents: read
 
-    permissions:
-      # Creating the release page.
-      contents: write
-      # The OIDC token npm trades for publish rights. This is the whole of the
-      # authentication: no NPM_TOKEN, nothing stored on the repository.
-      id-token: write
+jobs:
+  # Everything that runs code from the dependency tree -- npm ci with its
+  # install scripts, the build, the tests -- happens here, where the token can
+  # read the repository and nothing else. What leaves this job is the tarball
+  # npm will publish and the page the release will carry, nothing more.
+  build:
+    runs-on: ubuntu-latest
 
     steps:
       # The whole history: the notes are written from the commits since the
-      # last released tag, and a shallow clone has none of them.
+      # last released tag, and a shallow clone has none of them. Without the
+      # token left behind in .git/config, where every later step could read it.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      # v6 was the first that carries out the trusted-publishing handshake, and
-      # npm has to be 11.5.1 or newer to understand it — Node 24 brings one.
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-          registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
       - run: npm ci
@@ -50,19 +50,82 @@ jobs:
             exit 1
           }
 
-      # Provenance is recorded on its own when publishing this way, so there is
-      # no --provenance to pass and no token to hand over.
-      - run: npm publish
-
       # The same command a maintainer runs before pushing the tag, so the page
       # cannot say something they did not read.
       - run: npm run notes -- "$GITHUB_REF_NAME"
 
+      # Packed here, so the job that publishes has nothing to install or build.
+      # Into a folder without a leading dot: upload-artifact leaves hidden files
+      # out unless told otherwise, and .out/ is one.
+      - name: Pack what gets published
+        run: |
+          mkdir release
+          npm pack --pack-destination release
+          cp .out/notes.md release/notes.md
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: release/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Reading .nvmrc, and nothing else.
+      contents: read
+      # The OIDC token npm trades for publish rights. This is the whole of the
+      # authentication: no NPM_TOKEN, nothing stored on the repository. It is
+      # held by this job alone, which runs no code from the dependency tree.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # v6 was the first that carries out the trusted-publishing handshake, and
+      # npm has to be 11.5.1 or newer to understand it — Node 24 brings one.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: release
+
+      # Provenance is recorded on its own when publishing this way, so there is
+      # no --provenance to pass and no token to hand over. A tarball rather than
+      # the folder, so no lifecycle script runs here either; the ./ keeps npm
+      # from reading release/… as a GitHub repository.
+      - run: npm publish ./release/*.tgz
+
+  release-page:
+    needs: publish
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Creating the release page.
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: release
+
+      # After the publish, so a page never announces a version npm refused.
       - name: Publish the release page
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
-            --notes-file .out/notes.md \
+            --notes-file release/notes.md \
             --verify-tag

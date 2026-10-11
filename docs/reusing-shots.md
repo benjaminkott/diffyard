@@ -61,7 +61,8 @@ In `results.json` every comparison carries it per side:
   "a": {
     "fingerprint": "9c3a8daae8ac56a2",
     "reusedFrom": null,
-    "recapturedBecause": null
+    "recapturedBecause": null,
+    "answer": { "status": 200, "landed": "https://example.ddev.site/about", "path": "/about", "redirected": false }
   },
   "b": {
     "fingerprint": "d82d2956e97cadcb",
@@ -69,10 +70,15 @@ In `results.json` every comparison carries it per side:
       "runId": "2026-08-28_02-11-02-2bba01",
       "capturedAt": "2026-08-28T00:11:02.951Z"
     },
-    "recapturedBecause": null
+    "recapturedBecause": null,
+    "answer": { "status": 200, "landed": "https://example.com/about", "path": "/about", "redirected": false }
   }
 }
 ```
+
+`answer` is how that side answered when it was photographed, and a side taken
+from the run travels with it: a page that answered 200 then is held against
+whatever the other side answers now, and a smoke run can judge it.
 
 Production can of course move underneath you. That is the deliberate trade, so
 the way back is a flag rather than an edit: `--refresh`, or a run without

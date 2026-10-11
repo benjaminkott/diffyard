@@ -27,6 +27,7 @@ import type {
   RunResult,
   Scenario,
   Side,
+  SideCapture,
   Viewport,
 } from './types.js';
 
@@ -233,9 +234,7 @@ export class ReuseStore {
         url,
         logs,
         pictures: await this.picturesOf(previous, side),
-        // A comparison records answers only where they were worth saying; a
-        // smoke run records the page's own on its verdict.
-        answer: previous.answers ? previous.answers[side] : previous.smoke?.answer ?? null,
+        answer: answerOf(previous, held, side),
       };
     } catch {
       return { reused: false, reason: 'missing' };
@@ -260,6 +259,21 @@ export class ReuseStore {
       return [];
     }
   }
+}
+
+/**
+ * How a side answered in the run it is taken from.
+ *
+ * Kept with the side's capture since that was recorded. A run written
+ * before has it only where it was worth showing — on the comparison when
+ * the two sides disagreed or one moved, on the verdict of a smoke run — and
+ * a plain 200 from such a run is lost, which leaves the side unjudged on its
+ * answer rather than judged on a guess.
+ */
+function answerOf(previous: Comparison, held: SideCapture, side: Side): Answer | null {
+  if (held.answer !== undefined) return held.answer;
+  if (previous.answers) return previous.answers[side];
+  return side === 'a' ? (previous.smoke?.answer ?? null) : null;
 }
 
 /** Run directories, newest first. */

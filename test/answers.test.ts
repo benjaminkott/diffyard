@@ -77,7 +77,7 @@ scenarios:
  * out afterwards -- which is the file a later run reads to know what it may
  * reuse.
  */
-async function recorded(path: string, out: string, extra = ''): Promise<RunResult> {
+async function recorded(path: string, out: string, extra = '', b: string | null = siteB.url): Promise<RunResult> {
   const dir = join(workDir, `run-${counter++}`);
   const file = join(dir, 'diffyard.yaml');
   mkdirSync(dir, { recursive: true });
@@ -86,8 +86,7 @@ async function recorded(path: string, out: string, extra = ''): Promise<RunResul
     `
 compare:
   a: ${siteA.url}
-  b: ${siteB.url}
-output:
+${b === null ? '' : `  b: ${b}\n`}output:
   dir: ${out}
 browser:
   viewports:
@@ -121,6 +120,62 @@ describe('scoring a stored run again', () => {
     assert.equal(comparison.answers.b.redirected, true);
     assert.equal(comparison.answers.b.path, '/elsewhere');
     assert.deepEqual(comparison.kinds, ['answer'], 'so it is still filed as one');
+  });
+
+  it('keeps a plain 200 too, so the side taken can hold the other to it', async () => {
+    // The earlier run had nothing worth saying: both sides answered 200. The
+    // side taken from it still answered, and a fresh side that now comes
+    // back 404 is a different page, not a page that changed.
+    const out = join(workDir, 'out-reuse-plain');
+    const first = await recorded('/gone', out, '', siteA.url);
+    assert.equal(first.comparisons[0]?.answers, null, 'nothing worth showing the first time');
+    assert.equal(first.comparisons[0]?.capture?.a.answer?.status, 200, 'but the answer is kept with the side');
+
+    const again = await recorded('/gone', out, 'reuse:\n  side: a\n');
+    const comparison = again.comparisons[0];
+
+    assert.ok(comparison?.capture?.a.reusedFrom, 'side A came from the first run');
+    assert.ok(comparison.answers, 'and was held against the side asked now');
+    assert.equal(comparison.answers.a.status, 200);
+    assert.equal(comparison.answers.b.status, 404);
+    assert.equal(comparison.status, 'fail');
+    assert.deepEqual(comparison.kinds, ['answer']);
+  });
+
+  it('lets a smoke run judge a side taken from a comparison', async () => {
+    // A page that answered 200 in the comparison answered 200; taking it as
+    // the one site of a smoke run must not turn that into nothing at all.
+    const out = join(workDir, 'out-reuse-smoke');
+    await recorded('/', out);
+
+    const smoke = await recorded('/', out, 'reuse:\n  side: a\n', null);
+    const comparison = smoke.comparisons[0];
+
+    assert.equal(smoke.mode, 'smoke');
+    assert.ok(comparison?.capture?.a.reusedFrom, 'side A came from the comparison');
+    assert.equal(comparison.smoke?.answer.status, 200);
+    assert.equal(comparison.status, 'pass');
+  });
+
+  it('still reads the answers of a run written before they were kept per side', async () => {
+    const out = join(workDir, 'out-reuse-old');
+    const first = await recorded('/moved', out);
+
+    // What a run of an earlier version wrote: the answers only on the
+    // comparison, where there was something to show.
+    const old = structuredClone(first);
+    for (const comparison of old.comparisons) {
+      delete comparison.capture?.a.answer;
+      delete comparison.capture?.b?.answer;
+    }
+    writeFileSync(join(first.outDir, 'results.json'), `${JSON.stringify(old, null, 2)}\n`);
+
+    const again = await recorded('/moved', out, 'reuse:\n  side: a,b\n');
+    const comparison = again.comparisons[0];
+
+    assert.ok(comparison?.capture?.a.reusedFrom);
+    assert.equal(comparison.answers?.b.redirected, true);
+    assert.deepEqual(comparison.kinds, ['answer']);
   });
 });
 

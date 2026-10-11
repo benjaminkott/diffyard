@@ -653,6 +653,9 @@ async function obtain(
   const request = { scenario: job.scenario, viewport: job.viewport, side, signal };
   if (!store || !config.reuse.sides.includes(side)) {
     const shot = await capturer.capture(request);
+    // Kept with the side whatever it was, so a later run that takes this
+    // side has an answer to judge it by, not only the ones worth showing.
+    held.answer = shot.answer;
     return { ...shot, pixels: null, stored: 'png' };
   }
 
@@ -664,6 +667,8 @@ async function obtain(
   if (outcome.reused) {
     held.reusedFrom = { runId: store.source.runId, capturedAt: store.source.capturedAt };
     held.recapturedBecause = null;
+    // Passed on, so a run reusing this one in turn still has it.
+    held.answer = outcome.answer;
     return {
       url: outcome.url,
       png: outcome.png,
@@ -683,6 +688,7 @@ async function obtain(
   held.reusedFrom = null;
   held.recapturedBecause = MISS_REASON[outcome.reason];
   const shot = await capturer.capture(request);
+  held.answer = shot.answer;
   return { ...shot, pixels: null, stored: 'png' };
 }
 
@@ -1002,7 +1008,8 @@ async function compare(
       // A redirect is recorded but does not decide anything on its own: a
       // suite may well be pointed at addresses that both sides move, and both
       // moving to the same place is the two sides agreeing.
-      // A side taken from an earlier run was not asked anything now, so there
+      // A side taken from an earlier run brings the answer that run kept for
+      // it. One from a run too old to have kept it has none, and then there
       // is nothing to hold the other to. Silence rather than a guess.
       const answers = shotA.answer && shotB.answer ? { a: shotA.answer, b: shotB.answer } : null;
       const answeredDifferently = answers !== null && answers.a.status !== answers.b.status;

@@ -559,6 +559,13 @@ export interface SideCapture {
    * when it was reused, or when reuse was not asked for.
    */
   recapturedBecause: string | null;
+  /**
+   * How this side answered when it was photographed, kept whatever it was.
+   * `answers` on the comparison only holds the ones worth showing, and a
+   * later run that takes this side needs the plain 200 as much as the 404.
+   * Absent in runs written before it was kept, and when nothing was taken.
+   */
+  answer?: Answer | null;
 }
 
 /**

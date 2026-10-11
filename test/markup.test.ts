@@ -251,3 +251,49 @@ describe('the two systems own addresses', () => {
     assert.equal(diff.result.identical, false, 'a different host is a different host');
   });
 });
+
+/**
+ * Two documents of very different length.
+ *
+ * Bounding the product of the two lengths does not bound what the diff keeps
+ * on its way: every step of it is kept, and a document of three hundred lines
+ * against one of thirteen thousand took one and a half gigabytes.
+ */
+describe('a short document against a long one', () => {
+  const paragraphs = (prefix: string, from: number, to: number): string =>
+    Array.from({ length: to - from }, (_, index) => `<p>${prefix}${from + index}</p>`).join('');
+
+  it('gives up within a bounded amount of memory, and says everything changed', () => {
+    const a = `<div>${paragraphs('a', 0, 100)}</div>`;
+    const b = `<div>${paragraphs('b', 0, 4400)}</div>`;
+
+    const diff = diffMarkup(a, b, options());
+
+    // Everything but the two lines both start and the two both end with.
+    assert.equal(diff.result.removed, diff.result.linesA - 4);
+    assert.equal(diff.result.added, diff.result.linesB - 4);
+    // Each test file runs in a process of its own, so the peak is this file's:
+    // a few hundred megabytes at most, not a gigabyte and a half.
+    const peak = process.resourceUsage().maxRSS;
+    assert.ok(peak < 512 * 1024, `peaked at ${peak} kB`);
+  });
+
+  it('still finds what was inserted, where that is few enough edits', () => {
+    // Inserted in two places, so trimming the shared ends leaves the work.
+    const a = `<div>${paragraphs('a', 0, 100)}</div>`;
+    const b = [
+      '<div>',
+      paragraphs('a', 0, 20),
+      paragraphs('b', 0, 500),
+      paragraphs('a', 20, 80),
+      paragraphs('b', 500, 1000),
+      paragraphs('a', 80, 100),
+      '</div>',
+    ].join('');
+
+    const diff = diffMarkup(a, b, options());
+
+    assert.equal(diff.result.removed, 0);
+    assert.equal(diff.result.added, 3000);
+  });
+});

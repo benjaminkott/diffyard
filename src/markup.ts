@@ -371,6 +371,19 @@ function diffLines(a: string[], b: string[]): HunkLine[] {
   return [...head, ...middle, ...tail];
 }
 
+/**
+ * How many furthest-reaching points the diff may keep for its way back: 64 MB.
+ *
+ * The product of the two lengths says nothing about this. Every step keeps a
+ * copy of where each diagonal got to, and a document of three hundred lines
+ * against one of thirteen thousand passed the budget in diffLines, taking
+ * thirteen thousand steps of copies -- one and a half gigabytes, per worker.
+ * Only the diagonals a step can have reached are kept, so step d costs 2d + 1
+ * and the whole walk (D + 1) squared: four thousand steps of edits, which is
+ * more than anybody reads as a diff.
+ */
+const KEPT = 16_000_000;
+
 function myers(a: string[], b: string[]): HunkLine[] {
   const max = a.length + b.length;
   if (max === 0) return [];
@@ -378,9 +391,14 @@ function myers(a: string[], b: string[]): HunkLine[] {
   const offset = max;
   const v = new Int32Array(2 * max + 1);
   const trace: Int32Array[] = [];
+  let kept = 0;
 
   for (let d = 0; d <= max; d += 1) {
-    trace.push(v.slice());
+    kept += 2 * d + 1;
+    if (kept > KEPT) break;
+    // Diagonals -d to d, which is all step d reads and all the way back reads
+    // of it; trace[d][d + k] is diagonal k.
+    trace.push(v.slice(offset - d, offset + d + 1));
 
     for (let k = -d; k <= d; k += 2) {
       let x =
@@ -396,17 +414,19 @@ function myers(a: string[], b: string[]): HunkLine[] {
 
       v[offset + k] = x;
 
-      if (x >= a.length && y >= b.length) return backtrack(trace, a, b, d, offset);
+      if (x >= a.length && y >= b.length) return backtrack(trace, a, b, d);
     }
   }
 
+  // Too many edits to keep the way back: the same answer as a pair too large
+  // to start on.
   return [
     ...a.map((text): HunkLine => ({ type: 'remove', text })),
     ...b.map((text): HunkLine => ({ type: 'add', text })),
   ];
 }
 
-function backtrack(trace: Int32Array[], a: string[], b: string[], d: number, offset: number): HunkLine[] {
+function backtrack(trace: Int32Array[], a: string[], b: string[], d: number): HunkLine[] {
   const lines: HunkLine[] = [];
   let x = a.length;
   let y = b.length;
@@ -415,8 +435,8 @@ function backtrack(trace: Int32Array[], a: string[], b: string[], d: number, off
     const v = trace[step]!;
     const k = x - y;
     const previousK =
-      k === -step || (k !== step && v[offset + k - 1]! < v[offset + k + 1]!) ? k + 1 : k - 1;
-    const previousX = v[offset + previousK]!;
+      k === -step || (k !== step && v[step + k - 1]! < v[step + k + 1]!) ? k + 1 : k - 1;
+    const previousX = v[step + previousK]!;
     const previousY = previousX - previousK;
 
     while (x > previousX && y > previousY) {

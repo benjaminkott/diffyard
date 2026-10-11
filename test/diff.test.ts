@@ -93,6 +93,26 @@ describe('diffImages', () => {
     assert.equal(result.sizeMismatch, true);
   });
 
+  it('counts the padded area of a page that got wider as a difference', () => {
+    // At a viewport's size, because the quiet blocks are judged in blocks of
+    // the page: the strip only one side has used to be read against the start
+    // of A's next row, and past A's last row against nothing at all.
+    for (const alignRows of [false, true]) {
+      const options = { ...OPTIONS, alignRows };
+      const wider = diffImages(png(375, 800, WHITE), png(415, 800, WHITE), options).result;
+      const narrower = diffImages(png(415, 800, WHITE), png(375, 800, WHITE), options).result;
+
+      assert.equal(wider.diffPixels, 40 * 800, `B wider, alignRows ${alignRows}`);
+      assert.equal(narrower.diffPixels, 40 * 800, `A wider, alignRows ${alignRows}`);
+    }
+  });
+
+  it('still counts the padded area of a page that got taller', () => {
+    const { result } = diffImages(png(375, 800, WHITE), png(375, 840, WHITE), OPTIONS);
+
+    assert.equal(result.diffPixels, 375 * 40);
+  });
+
   it('ignores a colour difference below the pixel threshold', () => {
     const a = png(10, 10, [255, 255, 255]);
     const b = png(10, 10, [252, 252, 252]);

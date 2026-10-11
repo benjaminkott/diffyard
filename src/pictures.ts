@@ -387,6 +387,12 @@ function blockDelta(
     if (bRow < 0 || bRow >= b.height || source >= a.height) return null;
 
     for (let across = 0; across < BLOCK && x + across < right; across += 1) {
+      // A column one side does not have is the same as a row it does not
+      // have. Past A's width the offset into its pixels runs on into the next
+      // row, and off the end of the buffer on the last ones, where every
+      // comparison with NaN is false -- either way a page that got wider
+      // would have its new strip set aside as unseen.
+      if (x + across >= a.width) return null;
       const bx = x + across + dx;
       if (bx < 0 || bx >= b.width) return null;
 

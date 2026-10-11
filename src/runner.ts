@@ -170,11 +170,16 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
             deadline - Date.now()
           );
           comparison = await withTimeout(
-            compare(capturer, config, job, shotsDir, report, store, runId),
+            (signal) => {
+              // Work given up on keeps quiet: the line is someone else's by now.
+              const say = (phase: Phase) => {
+                if (!signal.aborted) report(phase);
+              };
+              return compare(capturer, config, job, shotsDir, say, store, runId, signal);
+            },
             budget,
             job,
-            config,
-            capturer
+            config
           );
           // Cut off by the run's own deadline rather than by its own budget:
           // that says as little about the page as never having started.
@@ -355,34 +360,39 @@ export function settingsOf(config: Config): RunSettings {
  * Caps a comparison at `budget` milliseconds.
  *
  * Playwright operations carry their own timeouts, so this is a backstop for the
- * case where a page keeps the run busy in a way no single operation notices. On
- * expiry the browser contexts are recycled, since a page stuck mid-interaction
- * cannot be trusted for the next scenario.
+ * case where a page keeps the run busy in a way no single operation notices.
+ *
+ * On expiry the work is told to stop, and only that work: the pages it opened
+ * are closed, which ends whatever they were stuck in, and it takes no further
+ * attempts. It used to be every context in the browser that was closed, so
+ * one slow page failed every comparison the other workers had under way, and
+ * the abandoned one carried on retrying, with no budget left to stop it.
  */
 async function withTimeout(
-  work: Promise<Comparison>,
+  work: (signal: AbortSignal) => Promise<Comparison>,
   budget: number,
   job: Job,
-  config: Config,
-  capturer: Capturer
+  config: Config
 ): Promise<Comparison> {
-  if (!Number.isFinite(budget) || budget <= 0) return work;
+  const controller = new AbortController();
+  if (!Number.isFinite(budget) || budget <= 0) return work(controller.signal);
 
+  const running = work(controller.signal);
   let timer: NodeJS.Timeout | undefined;
   const expiry = new Promise<'timeout'>((resolve) => {
     timer = setTimeout(() => resolve('timeout'), budget);
   });
 
   try {
-    const outcome = await Promise.race([work, expiry]);
+    const outcome = await Promise.race([running, expiry]);
     if (outcome !== 'timeout') return outcome;
   } finally {
     clearTimeout(timer);
   }
 
   // Let the abandoned capture fail quietly instead of surfacing as unhandled.
-  void work.catch(() => undefined);
-  await capturer.recycle();
+  void running.catch(() => undefined);
+  controller.abort();
 
   return abandoned(job, config, `Timed out after ${Math.round(budget / 1000)}s`);
 }
@@ -637,9 +647,10 @@ async function obtain(
   job: Job,
   store: ReuseStore | null,
   held: SideCapture,
-  side: Side
+  side: Side,
+  signal: AbortSignal
 ): Promise<Shot> {
-  const request = { scenario: job.scenario, viewport: job.viewport, side };
+  const request = { scenario: job.scenario, viewport: job.viewport, side, signal };
   if (!store || !config.reuse.sides.includes(side)) {
     const shot = await capturer.capture(request);
     return { ...shot, pixels: null, stored: 'png' };
@@ -708,7 +719,8 @@ async function smoke(
   shotsDir: string,
   report: (phase: Phase) => void,
   store: ReuseStore | null,
-  runId: string
+  runId: string,
+  signal: AbortSignal
 ): Promise<Comparison> {
   const started = Date.now();
   const command = commandFor(config, runId, job.id);
@@ -719,10 +731,12 @@ async function smoke(
     b: null,
   };
 
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  // Not once the comparison has been given up on: nobody is waiting for the
+  // answer, and every attempt would load the browser the others are using.
+  for (let attempt = 1; attempt <= attempts && !signal.aborted; attempt += 1) {
     try {
       report('capture');
-      const shot = await obtain(capturer, config, job, store, capture.a, 'a');
+      const shot = await obtain(capturer, config, job, store, capture.a, 'a', signal);
       report('compare');
 
       const format = await formatForPair(config.images, [shot.pixels ?? shot.png]);
@@ -841,9 +855,10 @@ async function compare(
   shotsDir: string,
   report: (phase: Phase) => void,
   store: ReuseStore | null,
-  runId: string
+  runId: string,
+  signal: AbortSignal
 ): Promise<Comparison> {
-  if (config.mode === 'smoke') return smoke(capturer, config, job, shotsDir, report, store, runId);
+  if (config.mode === 'smoke') return smoke(capturer, config, job, shotsDir, report, store, runId, signal);
 
   const started = Date.now();
   const command = commandFor(config, runId, job.id);
@@ -854,13 +869,15 @@ async function compare(
     b: { fingerprint: fingerprint(config, job.scenario, job.viewport, 'b'), reusedFrom: null, recapturedBecause: null },
   };
 
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  // Not once the comparison has been given up on: nobody is waiting for the
+  // answer, and every attempt would load the browser the others are using.
+  for (let attempt = 1; attempt <= attempts && !signal.aborted; attempt += 1) {
     try {
       // Both sides at once. It halves the wall clock, and it is the fairer
       // comparison: the two pages meet the same machine load instead of one
       // being captured on an idle box and the other behind it.
       report('capture');
-      const take = (side: Side) => obtain(capturer, config, job, store, capture[side], side);
+      const take = (side: Side) => obtain(capturer, config, job, store, capture[side], side, signal);
       const [shotA, shotB] = config.sequential
         ? [await take('a'), await take('b')]
         : await Promise.all([take('a'), take('b')]);

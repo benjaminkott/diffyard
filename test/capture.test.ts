@@ -230,6 +230,113 @@ scenarios:
   });
 });
 
+describe('a comparison that runs out of time', { concurrency: false }, () => {
+  /**
+   * A site with a page that never answers, and one that answers only once the
+   * browser has hung up on the first -- so it is still being captured at the
+   * moment the other one is given up on, whatever the machine's speed.
+   */
+  async function stalling(): Promise<{ url: string; asked: () => number }> {
+    let asked = 0;
+    let released = false;
+    const waiting: ServerResponse[] = [];
+    const answer = (response: ServerResponse) => html(response, page({ title: 'Late', body: '<h1>Late</h1>' }));
+
+    const url = await site((request, response) => {
+      const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+
+      if (path === '/stuck') {
+        asked += 1;
+        response.on('close', () => {
+          released = true;
+          waiting.splice(0).forEach(answer);
+        });
+        return;
+      }
+
+      if (path === '/late' && !released) {
+        waiting.push(response);
+        return;
+      }
+
+      html(response, page({ title: 'Page', body: `<h1>${path}</h1>` }));
+    });
+
+    return { url, asked: () => asked };
+  }
+
+  const config = (url: string, retries: number, scenarios: string) => `
+compare:
+  a: ${url}
+  b: ${url}
+output:
+  dir: $OUT
+browser:
+  viewports:
+    desktop: { width: 500, height: 400 }
+markup:
+  enabled: false
+timeouts:
+  comparison: 4000
+stability:
+  workers: 2
+  retries: ${retries}
+scenarios:
+${scenarios}`;
+
+  it('leaves the comparisons beside it to finish', async () => {
+    const { url } = await stalling();
+    // Two workers: one is stuck on the first, the other passes the second
+    // and is half way through the third when the first runs out of time.
+    const result = await runYaml(
+      config(
+        url,
+        0,
+        `  - /stuck
+  - name: first
+    path: /first
+    steps:
+      - waitForTimeout: 1500
+  - /late
+`
+      )
+    );
+
+    const status = (name: string) => result.comparisons.find((entry) => entry.scenario === name);
+    assert.equal(status('stuck')?.status, 'timeout');
+    assert.equal(status('first')?.status, 'pass');
+    assert.equal(status('late')?.error, null, 'the browser was not closed under it');
+    assert.equal(status('late')?.status, 'pass');
+  });
+
+  it('takes no further attempts once it has been given up on', async () => {
+    const { url, asked } = await stalling();
+    const result = await runYaml(
+      config(
+        url,
+        2,
+        // The other worker is still busy well after the first one is given
+        // up on, so the run is there for a retry to happen in.
+        `  - /stuck
+  - name: before
+    path: /before
+    steps:
+      - waitForTimeout: 2500
+  - name: after
+    path: /after
+    steps:
+      - waitForTimeout: 2500
+`
+      )
+    );
+
+    assert.equal(result.comparisons.find((entry) => entry.scenario === 'stuck')?.status, 'timeout');
+    // Both sides ask once; a retry would have asked again while the run was
+    // still busy with the other comparison.
+    assert.equal(asked(), 2);
+  });
+});
+
 describe('two groups on one host as different visitors', { concurrency: false }, () => {
   it('opens each with its own credentials, not whichever came first', async () => {
     // The page says who asked for it, which is what a session or a preview

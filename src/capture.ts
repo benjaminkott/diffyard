@@ -161,6 +161,11 @@ export interface CaptureRequest {
   scenario: Scenario;
   viewport: Viewport;
   side: Side;
+  /**
+   * Fires when the comparison this capture belongs to was given up on. The
+   * page is closed there and then, which ends whatever it was stuck in.
+   */
+  signal?: AbortSignal;
 }
 
 export interface CaptureOutcome {
@@ -305,8 +310,9 @@ export class Capturer {
     }
   }
 
-  async capture({ scenario, viewport, side }: CaptureRequest): Promise<CaptureOutcome> {
+  async capture({ scenario, viewport, side, signal }: CaptureRequest): Promise<CaptureOutcome> {
     const { config } = this;
+    signal?.throwIfAborted();
     const path = (side === 'a' ? scenario.pathA : scenario.pathB) ?? scenario.path;
     // A grouped scenario carries the site it belongs to; everything else uses
     // the run's own sides.
@@ -318,6 +324,12 @@ export class Capturer {
     const context = await this.contextFor(sideConfig, viewport, contextKey);
     const page = await context.newPage();
     page.setDefaultTimeout(config.timeout);
+
+    // The page is this capture's alone, so closing it ends the one thing that
+    // was given up on. The context is left standing: other workers are using
+    // it, and closing it under them failed every comparison they had going.
+    const abandon = () => void page.close().catch(() => undefined);
+    signal?.addEventListener('abort', abandon, { once: true });
 
     // Attached before the navigation, or everything the first paint reports is
     // gone before anyone is listening.
@@ -338,6 +350,9 @@ export class Capturer {
     };
 
     try {
+      // Given up on while the context was still being opened.
+      signal?.throwIfAborted();
+
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       let answer = await open();
 
@@ -393,25 +408,10 @@ export class Capturer {
 
       return { url, answer, png, html, pictures, logs: fold(logs, config.logs.max) };
     } finally {
-      await page.close();
+      signal?.removeEventListener('abort', abandon);
+      // Already closed when the capture was given up on.
+      await page.close().catch(() => undefined);
     }
-  }
-
-  /**
-   * Drops every context, killing any page still stuck in an operation. Used
-   * after a comparison timed out, where the browser state is no longer
-   * trustworthy. New contexts are created lazily on the next capture.
-   */
-  async recycle(): Promise<void> {
-    const open = [...this.contexts.values()];
-    this.contexts.clear();
-    this.completed.clear();
-    await Promise.all(
-      open.map(async (pending) => {
-        const context = await pending.catch(() => null);
-        await context?.close().catch(() => undefined);
-      })
-    );
   }
 
   async close(): Promise<void> {

@@ -506,8 +506,9 @@ comparisonTimeout: 180000  # hard limit for one scenario/viewport pair
 runTimeout: 0              # hard limit for the whole run, 0 = none
 ```
 
-A comparison that hits its limit is reported as `TIMEOUT`, the browser contexts
-are recycled, and the run continues with the next scenario.
+A comparison that hits its limit is reported as `TIMEOUT`, its pages are closed
+and it is not retried, and the run continues with the next scenario. The
+comparisons other workers have under way are left to finish.
 
 ## Workflows
 

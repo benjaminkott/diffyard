@@ -138,3 +138,42 @@ scenarios:
     assert.doesNotMatch(comparison.error ?? '', /"\.ad"/, 'and only the one at fault');
   });
 });
+
+describe('two groups on one host as different visitors', { concurrency: false }, () => {
+  it('opens each with its own credentials, not whichever came first', async () => {
+    // The page says who asked for it, which is what a session or a preview
+    // header decides on a real site.
+    const url = await site((request, response) => {
+      const who = String(request.headers['x-who'] ?? 'nobody');
+      html(response, page({ title: 'Who', body: `<h1>Hello, ${who}</h1>` }));
+    });
+
+    const side = (who: string) => `{ url: "${url}", headers: { X-Who: ${who} } }`;
+    const result = await runYaml(`
+output:
+  dir: $OUT
+browser:
+  viewports:
+    desktop: { width: 500, height: 400 }
+markup:
+  enabled: false
+groups:
+  - name: same
+    compare:
+      a: ${side('one')}
+      b: ${side('one')}
+    scenarios:
+      - /
+  - name: preview
+    compare:
+      a: ${side('one')}
+      b: ${side('two')}
+    scenarios:
+      - /
+`);
+
+    const status = (group: string) => result.comparisons.find((entry) => entry.group === group)?.status;
+    assert.equal(status('same'), 'pass', 'one visitor on both sides sees one page');
+    assert.equal(status('preview'), 'fail', 'and a second visitor is greeted as themselves');
+  });
+});

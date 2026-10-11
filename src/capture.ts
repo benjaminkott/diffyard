@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createRequire as makeRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { chromium, firefox, webkit } from 'playwright';
@@ -250,8 +251,34 @@ async function picturesOf(page: Page, scenario: Scenario): Promise<Picture[]> {
 }
 
 /**
- * Owns the browser and one context per (side, deviceScaleFactor) pair, so
- * headers, cookies and auth are applied once instead of per navigation.
+ * Which context a capture belongs in: one per side, scale and everything the
+ * side opens its context with.
+ *
+ * The address alone is not enough. Two groups may point at the same host as
+ * different people -- one with a session cookie, one without; one with basic
+ * auth, one with a header that switches the preview on -- and a context
+ * created for the first would have carried its credentials into every page
+ * of the second, so pages were photographed logged in or out depending on
+ * which group happened to start first. Hashed, because the key is only ever
+ * compared, and credentials have no business sitting in it readable.
+ */
+function contextKeyOf(side: Side, viewport: Viewport, sideConfig: SideConfig): string {
+  const settings = {
+    side,
+    scale: viewport.deviceScaleFactor,
+    baseUrl: sideConfig.baseUrl,
+    // Sorted, so two spellings of the same headers share a context.
+    headers: Object.entries(sideConfig.headers).sort(([one], [two]) => one.localeCompare(two)),
+    cookies: sideConfig.cookies,
+    basicAuth: sideConfig.basicAuth,
+    storageState: sideConfig.storageState,
+  };
+  return createHash('sha256').update(JSON.stringify(settings)).digest('hex');
+}
+
+/**
+ * Owns the browser and one context per side, scale and set of credentials,
+ * so headers, cookies and auth are applied once instead of per navigation.
  */
 export class Capturer {
   private constructor(
@@ -287,7 +314,7 @@ export class Capturer {
     if (!sideConfig) throw new Error(`Side ${side.toUpperCase()} was asked for, but this run has no such side`);
     const url = resolveUrl(sideConfig.baseUrl, path);
 
-    const contextKey = `${side}:${viewport.deviceScaleFactor}:${sideConfig.baseUrl}`;
+    const contextKey = contextKeyOf(side, viewport, sideConfig);
     const context = await this.contextFor(sideConfig, viewport, contextKey);
     const page = await context.newPage();
     page.setDefaultTimeout(config.timeout);
@@ -427,7 +454,7 @@ export class Capturer {
   }
 
   /**
-   * One context per side, scale and base URL, created once.
+   * One context per key from contextKeyOf, created once.
    *
    * The map holds the promise rather than the context: with workers running
    * side by side, two captures asking at the same time would otherwise each

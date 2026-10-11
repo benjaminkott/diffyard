@@ -501,9 +501,10 @@ logs:
 Three levels, so a single stuck page cannot hold up a run:
 
 ```yaml
-timeout: 30000             # per Playwright action (click, waitFor, screenshot)
-comparisonTimeout: 180000  # hard limit for one scenario/viewport pair
-runTimeout: 0              # hard limit for the whole run, 0 = none
+timeouts:
+  action: 30000            # per Playwright action (click, waitFor, screenshot)
+  comparison: 180000       # hard limit for one scenario/viewport pair
+  run: 0                   # hard limit for the whole run, 0 = none
 ```
 
 A comparison that hits its limit is reported as `TIMEOUT`, its pages are closed

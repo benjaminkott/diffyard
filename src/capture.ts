@@ -615,10 +615,42 @@ function answerOf(status: number | null, asked: string, landed: string, baseUrl:
   return { status, landed, path: to, redirected: from !== to };
 }
 
+/**
+ * Hides by stylesheet, one rule per selector.
+ *
+ * A selector list in one rule is all or nothing: a single entry the browser
+ * cannot parse throws the whole rule away, and nothing says so. `hide` shares
+ * its vocabulary with `mask`, which takes Playwright locators as well, so a
+ * `text=Live` written for one and moved to the other un-hid every other
+ * selector beside it -- and the difference they were there to cover came
+ * back as a finding. Separate rules keep the rest standing, and a selector a
+ * stylesheet cannot hold is an error that names it, as it is for `remove`.
+ */
 async function hideElements(page: Page, selectors: string[]): Promise<void> {
   if (selectors.length === 0) return;
+
+  const invalid = await page.evaluate((list) => {
+    const probe = document.createDocumentFragment();
+    return list.filter((selector) => {
+      try {
+        probe.querySelector(selector);
+        return false;
+      } catch {
+        return true;
+      }
+    });
+  }, selectors);
+
+  if (invalid.length > 0) {
+    const named = invalid.map((selector) => `"${selector}"`).join(', ');
+    throw new Error(
+      `\`hide\` takes CSS selectors, and ${named} ${invalid.length === 1 ? 'is not one' : 'are not'}. ` +
+        'It is applied as a stylesheet, which knows no Playwright locators: write it as CSS, or use `mask`.'
+    );
+  }
+
   await page.addStyleTag({
-    content: `${selectors.join(', ')} { visibility: hidden !important; }`,
+    content: selectors.map((selector) => `${selector} { visibility: hidden !important; }`).join('\n'),
   });
 }
 

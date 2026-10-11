@@ -90,3 +90,51 @@ scenarios:
     assert.equal(comparison.status, 'pass');
   });
 });
+
+describe('hiding what legitimately differs', { concurrency: false }, () => {
+  /** Two sites alike but for the two things a suite would hide. */
+  async function pair(): Promise<{ a: string; b: string }> {
+    const body = (which: string) =>
+      `<h1>Front</h1><p class="ad">Advert ${which}</p><p class="promo">Offer ${which}</p>`;
+    return {
+      a: await site((_request, response) => html(response, page({ title: 'Front', body: body('one') }))),
+      b: await site((_request, response) => html(response, page({ title: 'Front', body: body('two') }))),
+    };
+  }
+
+  const config = (a: string, b: string, hide: string) => `
+compare:
+  a: ${a}
+  b: ${b}
+output:
+  dir: $OUT
+browser:
+  viewports:
+    desktop: { width: 500, height: 400 }
+markup:
+  enabled: false
+diff:
+  hide: ${hide}
+scenarios:
+  - /
+`;
+
+  it('hides every selector it is given', async () => {
+    const { a, b } = await pair();
+    const result = await runYaml(config(a, b, '[".ad", ".promo"]'));
+    assert.equal(result.comparisons[0]?.status, 'pass');
+  });
+
+  it('names a selector a stylesheet cannot hold, rather than hiding nothing', async () => {
+    // A Playwright locator is a fine `mask`, and in a selector list it used to
+    // throw away the rule for `.ad` and `.promo` too, without a word.
+    const { a, b } = await pair();
+    const result = await runYaml(config(a, b, '[".ad", "text=Live", ".promo"]'));
+    const comparison = result.comparisons[0];
+
+    assert.ok(comparison);
+    assert.equal(comparison.status, 'error');
+    assert.match(comparison.error ?? '', /`hide`.*"text=Live"/);
+    assert.doesNotMatch(comparison.error ?? '', /"\.ad"/, 'and only the one at fault');
+  });
+});

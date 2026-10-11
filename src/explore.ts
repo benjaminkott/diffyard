@@ -370,8 +370,9 @@ export function renderExploration(
     [
       'Next:',
       '  - explore the same page at a narrow viewport to find the mobile navigation',
-      '  - diffyard_create_config with the draft (adjust the scenarios first)',
-      '  - diffyard_preview_scenario for any scenario with steps, before running the whole suite',
+      '  - save the draft as diffyard.yaml and adjust the scenarios -- or, where the project',
+      '    already has a config for this site, add them to that one instead',
+      '  - diffyard run diffyard.yaml --filter <name> for a scenario with steps, before the whole suite',
     ].join('\n')
   );
 

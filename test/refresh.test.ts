@@ -169,6 +169,38 @@ describe('the command a result carries', () => {
       'and a comparison this run did not touch keeps its own');
   });
 
+  it('keeps what the report knew about a comparison the run never got to', async () => {
+    const { dir, config, out } = project();
+    await diffyard(dir, [config]);
+    const runId = latest(out);
+    const before = results(out, runId);
+
+    // Out of run time before the first capture: what Ctrl+C does to every
+    // comparison not yet reached, without having to time a signal.
+    await diffyard(dir, [config, '--into', runId, '--run-timeout', '1', '--no-fail']);
+
+    const after = results(out, runId);
+    assert.deepEqual(
+      after.comparisons.map((entry) => [entry.id, entry.status]),
+      before.comparisons.map((entry) => [entry.id, entry.status]),
+      'every entry stands as it was'
+    );
+    for (const entry of after.comparisons) {
+      assert.ok(entry.files.a && existsSync(join(out, runId, entry.files.a)), `${entry.id} keeps its screenshot`);
+    }
+  });
+
+  it('files a comparison the run never got to when the report had none', async () => {
+    const { dir, config, out } = project();
+    await diffyard(dir, [config, '--case', 'index--desktop', '--run-id', 'partial']);
+
+    await diffyard(dir, [config, '--into', 'partial', '--run-timeout', '1', '--no-fail']);
+
+    const entry = results(out, 'partial').comparisons.find((item) => item.id === 'about--desktop');
+    assert.equal(entry?.status, 'timeout', 'named rather than missing, so --unfinished finds it');
+    assert.equal(entry?.unreached, true);
+  });
+
   it('says in the report that part of it is newer than the run', async () => {
     const { dir, config, out } = project();
     await diffyard(dir, [config]);

@@ -669,6 +669,12 @@ export interface Comparison {
   command: string;
   /** When this comparison finished, which a refreshed one no longer shares. */
   ranAt: string;
+  /**
+   * Set on a comparison the run never got to, or cut off: it was stopped, or
+   * the run ran out of time first. It says nothing about the page, so folding
+   * it into a report must not replace what that report already knew about it.
+   */
+  unreached?: true;
   error: string | null;
   durationMs: number;
 }

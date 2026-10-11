@@ -161,7 +161,7 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
         let comparison: Comparison;
 
         if (Date.now() > deadline) {
-          comparison = abandoned(job, config, `Run timeout of ${config.runTimeout}ms reached`);
+          comparison = unreached(job, config, `Run timeout of ${config.runTimeout}ms reached`);
         } else if (job.scenario.skip) {
           comparison = skipped(job, config);
         } else {
@@ -176,6 +176,11 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
             config,
             capturer
           );
+          // Cut off by the run's own deadline rather than by its own budget:
+          // that says as little about the page as never having started.
+          if (comparison.status === 'timeout' && Date.now() >= deadline) {
+            comparison = { ...comparison, unreached: true };
+          }
         }
 
         comparisons[index] = comparison;
@@ -192,7 +197,7 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
     // keeping -- twenty minutes of captures -- and what it never reached is
     // named rather than missing, so `--unfinished` carries on from here.
     for (const [index, job] of jobs.entries()) {
-      comparisons[index] ??= abandoned(job, config, 'Stopped before this one ran');
+      comparisons[index] ??= unreached(job, config, 'Stopped before this one ran');
     }
   } finally {
     await capturer.close();
@@ -376,6 +381,15 @@ async function withTimeout(
   await capturer.recycle();
 
   return abandoned(job, config, `Timed out after ${Math.round(budget / 1000)}s`);
+}
+
+/**
+ * A comparison the run never started: stopped, or out of run time before its
+ * turn. Unlike one that timed out while capturing, it knows nothing about the
+ * page -- which is what tells a merge to keep the entry it already has.
+ */
+function unreached(job: Job, config: Config, reason: string): Comparison {
+  return { ...abandoned(job, config, reason), unreached: true };
 }
 
 /** A comparison that never produced a result: timed out or cut off by the run. */

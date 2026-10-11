@@ -397,7 +397,16 @@ async function mergeInto(result: RunResult): Promise<RunResult> {
   );
   const restored = withDetail(previous, held);
 
-  const fresh = new Map(result.comparisons.map((entry) => [entry.id, entry]));
+  // A comparison this run never got to -- stopped, or out of run time -- has
+  // nothing to say about the page. Letting it replace the entry the report
+  // already holds would turn a Ctrl+C into a report of timeouts, and the prune
+  // after it would delete the screenshots that entry pointed at.
+  const known = new Set(restored.comparisons.map((entry) => entry.id));
+  const fresh = new Map(
+    result.comparisons
+      .filter((entry) => !(entry.unreached && known.has(entry.id)))
+      .map((entry) => [entry.id, entry])
+  );
   const comparisons = restored.comparisons.map((entry) => fresh.get(entry.id) ?? entry);
 
   for (const [id, entry] of fresh) {

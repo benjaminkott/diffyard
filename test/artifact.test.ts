@@ -159,7 +159,10 @@ describe('packing a run', () => {
     unzipTest(file);
   });
 
-  for (const limit of [1, 64, 600]) {
+  // 40, 64 and 200 put only the offset of the last entries past the limit:
+  // the case where a local header without a ZIP64 field read back as a
+  // different name in Ubuntu's unzip.
+  for (const limit of [1, 40, 64, 200, 600]) {
     it(`moves every field past the limit into ZIP64 and keeps it readable (limit ${limit})`, async () => {
       const file = join(workDir, `wide-${limit}.zip`);
       await writeZip(runDir, file, 'run-one', limit);

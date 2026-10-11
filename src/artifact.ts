@@ -112,8 +112,12 @@ async function writeAll(file: FileHandle, part: Buffer): Promise<void> {
 
 function localHeader(entry: ZipEntry, time: number, date: number, limit: number): Buffer {
   // The local record has no offset, and its ZIP64 field carries both sizes or
-  // neither, whichever of the two is the one that overflowed.
-  const wide = entry.size >= limit || entry.compressedSize >= limit;
+  // neither, whichever of the two is the one that overflowed. It also carries
+  // them when only the offset did: the central record has a ZIP64 field then,
+  // and Ubuntu's unzip, outside a UTF-8 locale, spells a non-ASCII name one
+  // way in a record with extra fields and another in one without -- and calls
+  // the two a mismatch.
+  const wide = entry.size >= limit || entry.compressedSize >= limit || entry.offset >= limit;
   const extra = wide ? zip64Extra([entry.size, entry.compressedSize]) : Buffer.alloc(0);
 
   const local = Buffer.alloc(30);

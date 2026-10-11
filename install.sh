@@ -98,13 +98,15 @@ ok "node ${node_version}"
 # The bundles are what get linked, so both have to exist and be no older than
 # anything they were built from: every file under src/ at any depth — the
 # report lives a folder down — the script that bundles them, and the manifest
-# and lockfile that decide what was bundled in from node_modules.
+# and lockfile that decide what was bundled in from node_modules. Files only:
+# a directory is not something the bundle is built from, and its time moves
+# whenever an editor drops a swap file into it.
 needs_build=false
 for command in "${COMMANDS[@]}"; do
   bundle="$PROJECT/bin/$command.mjs"
   if [ ! -f "$bundle" ] || [ -n "$(find "$PROJECT/src" "$PROJECT/build.mjs" \
       "$PROJECT/package.json" "$PROJECT/package-lock.json" \
-      -newer "$bundle" -print -quit 2>/dev/null)" ]; then
+      -type f -newer "$bundle" -print -quit 2>/dev/null)" ]; then
     needs_build=true
     break
   fi

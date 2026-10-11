@@ -1347,10 +1347,43 @@ function smokeReason(comparison: Comparison): string {
   return reasons.join(', ');
 }
 
+/**
+ * Why a comparison failed, in the words a CI summary has room for.
+ *
+ * A comparison fails on its answers, its pixels, its markup or its logs, and
+ * the pixel ratio alone would call a page that answered 404 on one side
+ * "0.02% of pixels differ" -- which sends whoever reads it looking at the
+ * wrong thing.
+ */
+function compareReason(comparison: Comparison): string {
+  const { answers, diff, markup, logs } = comparison;
+  const reasons: string[] = [];
+
+  if (answers && answers.a.status !== answers.b.status) {
+    reasons.push(`answered ${answers.a.status ?? 'nothing'} on A and ${answers.b.status ?? 'nothing'} on B`);
+  } else if (answers && answers.a.redirected !== answers.b.redirected) {
+    reasons.push(`only side ${answers.a.redirected ? 'A' : 'B'} redirected`);
+  }
+  if (diff && diff.ratio > comparison.threshold) {
+    reasons.push(
+      `${(diff.ratio * 100).toFixed(2)}% of pixels differ (threshold ${(comparison.threshold * 100).toFixed(2)}%)`
+    );
+  }
+  if (markup && !markup.identical) reasons.push('the markup differs');
+  if (logs && logs.seriousOnOneSide > 0) {
+    reasons.push(`${logs.seriousOnOneSide} serious log entr${logs.seriousOnOneSide === 1 ? 'y' : 'ies'} on one side only`);
+  }
+
+  return reasons.join('; ');
+}
+
 function junitXml(result: RunResult): string {
   const cases = result.comparisons
     .map((comparison) => {
-      const name = escapeXml(`${comparison.scenario} @ ${comparison.viewport.name}`);
+      // With the group: the same page in two groups is two test cases, and a
+      // CI that keys its history on the name would fold them into one.
+      const scenario = comparison.group ? `${comparison.group}/${comparison.scenario}` : comparison.scenario;
+      const name = escapeXml(`${scenario} @ ${comparison.viewport.name}`);
       const time = (comparison.durationMs / 1000).toFixed(3);
       const open = `    <testcase classname="diffyard" name="${name}" time="${time}">`;
 
@@ -1359,8 +1392,7 @@ function junitXml(result: RunResult): string {
         return `${open}\n      <error message="${escapeXml(truncate(comparison.error ?? '', 300))}"/>\n    </testcase>`;
       }
       if (comparison.status === 'fail' && comparison.diff) {
-        const message = `${(comparison.diff.ratio * 100).toFixed(2)}% of pixels differ (threshold ${(comparison.threshold * 100).toFixed(2)}%)`;
-        return `${open}\n      <failure message="${escapeXml(message)}"/>\n    </testcase>`;
+        return `${open}\n      <failure message="${escapeXml(compareReason(comparison))}"/>\n    </testcase>`;
       }
       if (comparison.status === 'fail' && comparison.smoke) {
         return `${open}\n      <failure message="${escapeXml(smokeReason(comparison))}"/>\n    </testcase>`;

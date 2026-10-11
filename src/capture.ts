@@ -454,6 +454,11 @@ export class Capturer {
       colorScheme: config.colorScheme,
       reducedMotion: config.reducedMotion ? 'reduce' : 'no-preference',
       ignoreHTTPSErrors: config.ignoreHTTPSErrors,
+      // Holding a page still, hiding parts of it and `addStyle` all add an
+      // inline stylesheet, which an ordinary `style-src 'self'` forbids. The
+      // site's policy is about what visitors' browsers may run, not about the
+      // run looking at it, and without this every page of such a site failed.
+      bypassCSP: true,
       extraHTTPHeaders: sideConfig.headers,
       ...(sideConfig.basicAuth ? { httpCredentials: sideConfig.basicAuth } : {}),
       ...(sideConfig.storageState ? { storageState: sideConfig.storageState } : {}),

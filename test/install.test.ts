@@ -1,8 +1,21 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { existsSync, lstatSync, mkdtempSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { after, describe, it } from 'node:test';
 
@@ -116,5 +129,92 @@ describe('uninstalling', () => {
 
     assert.equal(readlinkSync(join(dir, 'diffyard')), '/bin/true');
     assert.equal(existsSync(join(dir, 'diffyard-mcp')), false, 'while still removing ours');
+  });
+});
+
+/**
+ * Whether the bundle is current.
+ *
+ * The link points at the bundle, so a stale one is a command that quietly
+ * runs yesterday's code. These run the script in a stand-in checkout with an
+ * npm that only writes down what it was asked, rather than rebuilding this
+ * checkout's bundle under the other tests that are running it.
+ */
+describe('deciding whether to build', () => {
+  const HOUR = 3600;
+
+  /** A checkout with every input an hour older than its bundles. */
+  function checkout(): { project: string; log: string; npm: string } {
+    const project = join(workDir, `checkout-${counter++}`);
+    const npm = join(project, '.fake-npm');
+    const log = join(project, 'npm.log');
+
+    const files: Record<string, string> = {
+      'src/cli.ts': '',
+      'src/report/shell.ts': '',
+      'build.mjs': '',
+      'package.json': '{}',
+      'package-lock.json': '{}',
+      'bin/diffyard.mjs': "#!/usr/bin/env node\nconsole.log('0.0.0');\n",
+      'bin/diffyard-mcp.mjs': '#!/usr/bin/env node\n',
+    };
+    for (const [name, body] of Object.entries(files)) {
+      mkdirSync(dirname(join(project, name)), { recursive: true });
+      writeFileSync(join(project, name), body);
+    }
+    chmodSync(join(project, 'bin', 'diffyard.mjs'), 0o755);
+    chmodSync(join(project, 'bin', 'diffyard-mcp.mjs'), 0o755);
+    mkdirSync(join(project, 'node_modules'));
+    copyFileSync(SCRIPT, join(project, 'install.sh'));
+
+    mkdirSync(npm);
+    writeFileSync(join(npm, 'npm'), `#!/bin/sh\necho "$*" >> '${log}'\n`);
+    chmodSync(join(npm, 'npm'), 0o755);
+
+    const now = Date.now() / 1000;
+    for (const name of Object.keys(files)) {
+      const at = name.startsWith('bin/') ? now : now - HOUR;
+      utimesSync(join(project, name), at, at);
+    }
+
+    return { project, log, npm };
+  }
+
+  async function installIn(project: string, npm: string): Promise<void> {
+    await run(join(project, 'install.sh'), ['--prefix', binDir()], {
+      env: { ...process.env, NO_COLOR: '1', PATH: `${npm}${delimiter}${process.env.PATH}` },
+    });
+  }
+
+  const built = (log: string): boolean =>
+    existsSync(log) && readFileSync(log, 'utf8').includes('run build');
+
+  it('leaves a bundle alone that is newer than everything it was built from', async () => {
+    const { project, log, npm } = checkout();
+    await installIn(project, npm);
+
+    assert.equal(built(log), false);
+  });
+
+  for (const input of ['src/cli.ts', 'src/report/shell.ts', 'build.mjs', 'package-lock.json']) {
+    it(`builds again after ${input} changed`, async () => {
+      const { project, log, npm } = checkout();
+      const later = Date.now() / 1000 + HOUR;
+      utimesSync(join(project, input), later, later);
+
+      await installIn(project, npm);
+
+      assert.equal(built(log), true);
+    });
+  }
+
+  it('builds when one of the two bundles is missing', async () => {
+    const { project, log, npm } = checkout();
+    rmSync(join(project, 'bin', 'diffyard-mcp.mjs'));
+
+    // The stand-in npm writes no bundle, so the link step finds it missing.
+    await assert.rejects(() => installIn(project, npm));
+
+    assert.equal(built(log), true);
   });
 });

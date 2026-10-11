@@ -95,16 +95,20 @@ if [ "$node_major" -lt "$NODE_MINIMUM" ]; then
 fi
 ok "node ${node_version}"
 
-# The bundle is what gets linked, so it has to exist and be no older than the
-# sources it was built from.
+# The bundles are what get linked, so both have to exist and be no older than
+# anything they were built from: every file under src/ at any depth — the
+# report lives a folder down — the script that bundles them, and the manifest
+# and lockfile that decide what was bundled in from node_modules.
 needs_build=false
-if [ ! -f "$PROJECT/bin/diffyard.mjs" ]; then
-  needs_build=true
-else
-  for source in "$PROJECT"/src/*.ts; do
-    [ "$source" -nt "$PROJECT/bin/diffyard.mjs" ] && needs_build=true && break
-  done
-fi
+for command in "${COMMANDS[@]}"; do
+  bundle="$PROJECT/bin/$command.mjs"
+  if [ ! -f "$bundle" ] || [ -n "$(find "$PROJECT/src" "$PROJECT/build.mjs" \
+      "$PROJECT/package.json" "$PROJECT/package-lock.json" \
+      -newer "$bundle" -print -quit 2>/dev/null)" ]; then
+    needs_build=true
+    break
+  fi
+done
 
 if [ "$needs_build" = true ]; then
   # Fetching them is what the reader would do next anyway, and telling them to

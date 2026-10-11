@@ -201,6 +201,36 @@ describe('the command a result carries', () => {
     assert.equal(entry?.unreached, true);
   });
 
+  it('leaves alone what it did not write, where it writes', async () => {
+    const { dir, config } = project();
+    // A run written straight into the project: its data/ is the project's.
+    mkdirSync(join(dir, 'data', 'fixtures'), { recursive: true });
+    writeFileSync(join(dir, 'data', 'settings.js'), 'export default {};\n');
+    writeFileSync(join(dir, 'data', 'fixtures', 'users.json'), '[]\n');
+
+    await diffyard(dir, [config, '--out', '.', '--no-run-folder']);
+    await diffyard(dir, [config, '--out', '.', '--no-run-folder']);
+
+    assert.ok(existsSync(join(dir, 'data', 'settings.js')), 'a script of the project stays');
+    assert.ok(existsSync(join(dir, 'data', 'fixtures', 'users.json')), 'and so does a folder of it');
+  });
+
+  it('refuses a run name that leads out of the output directory', async () => {
+    const { dir, config } = project();
+    await assert.rejects(diffyard(dir, [config, '--into', '..']), /not a run name/);
+    await assert.rejects(diffyard(dir, [config, '--run-id', '../elsewhere']), /not a run name/);
+  });
+
+  it('refuses to merge into a run that never finished', async () => {
+    const { dir, config, out } = project();
+    await diffyard(dir, [config, '--run-id', 'killed']);
+    // What a run killed before the end leaves: its screenshots, no results.
+    rmSync(join(out, 'killed', 'results.json'));
+
+    await assert.rejects(diffyard(dir, [config, '--into', 'killed']), /did not finish/);
+    assert.ok(readdirSync(join(out, 'killed', 'shots')).length > 0, 'and its screenshots are still there');
+  });
+
   it('says in the report that part of it is newer than the run', async () => {
     const { dir, config, out } = project();
     await diffyard(dir, [config]);

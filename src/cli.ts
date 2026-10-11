@@ -1,5 +1,7 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
+import { mkdir, open, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { BrowserError } from './capture.js';
@@ -10,7 +12,7 @@ import { explorePage, renderExploration } from './explore.js';
 import { EXAMPLE_CONFIG } from './example.js';
 import { Progress } from './progress.js';
 import { renderReport } from './report/index.js';
-import { INDEX_FILE, POOL_DIR, caseFile, forDelivery, readCase, withDetail } from './report/pool.js';
+import { INDEX_FILE, POOL_DIR, call, caseFile, forDelivery, readCase, withDetail } from './report/pool.js';
 import type { CaseDetail } from './report/pool.js';
 import { SCHEMA_FILENAME, SCHEMA_URL, schemaJson } from './schema.js';
 import { run } from './runner.js';
@@ -434,6 +436,28 @@ async function mergeInto(result: RunResult): Promise<RunResult> {
   };
 }
 
+/** Whether a run name stays one folder inside the output directory. */
+function isFolderName(name: string): boolean {
+  return name !== '' && name !== '.' && name !== '..' && !/[/\\]/.test(name);
+}
+
+/**
+ * Refuses a folder that holds a report's files but no results.json.
+ *
+ * That is a run killed before it finished -- the screenshots are written as
+ * it goes, the results at the end. A merge would take it for an empty folder
+ * and the prune after it would delete everything the killed run captured.
+ */
+async function assertMergeable(dir: string): Promise<void> {
+  if (existsSync(join(dir, 'results.json'))) return;
+  if (!existsSync(join(dir, 'shots')) && !existsSync(join(dir, INDEX_FILE))) return;
+
+  throw new ConfigError(
+    `${shortPath(dir)} holds screenshots but no results.json -- a run that did not finish.\n` +
+      'Run into a new folder instead, or remove that one first if nothing in it is worth keeping.'
+  );
+}
+
 /**
  * Clears what the report no longer refers to.
  *
@@ -462,19 +486,53 @@ async function pruneStale(runDir: string, result: RunResult): Promise<void> {
   }
 
   for (const dir of ['shots', POOL_DIR]) {
-    let entries: string[];
+    let entries: Dirent[];
     try {
-      entries = await readdir(join(runDir, dir));
+      entries = await readdir(join(runDir, dir), { withFileTypes: true });
     } catch {
       continue;
     }
 
+    const stale = entries
+      .filter((entry) => entry.isFile() && !named.has(`${dir}/${entry.name}`))
+      .map((entry) => `${dir}/${entry.name}`);
+
     await Promise.all(
-      entries
-        .map((name) => `${dir}/${name}`)
-        .filter((name) => !named.has(name))
-        .map((name) => rm(join(runDir, name), { force: true, recursive: true }))
+      stale.map(async (name) => {
+        if (await isOurs(runDir, name)) await rm(join(runDir, name), { force: true });
+      })
     );
+  }
+}
+
+/** What a comparison writes beside its screenshots, by name. */
+const SHOT_FILE = /^[^/]+\.(?:(?:a|b|diff)\.(?:png|webp)|(?:a|b)\.html|patch|pictures\.json|json)$/;
+
+/**
+ * Whether a file is one diffyard wrote, rather than one that happens to sit
+ * where it writes.
+ *
+ * shots/ and data/ are ordinary names, and a run folder is not always a
+ * folder of diffyard's own: `--out . --no-run-folder` makes it the project,
+ * whose data/ is the project's. So nothing is removed on the strength of not
+ * being named alone -- it also has to have the name a comparison gives its
+ * files, and a chunk has to start the way the pool starts every chunk.
+ */
+async function isOurs(runDir: string, name: string): Promise<boolean> {
+  const [dir, file] = name.split('/') as [string, string];
+  if (dir === 'shots') return SHOT_FILE.test(file);
+  if (!file.endsWith('.js')) return false;
+
+  const prefix = call('case', null).slice(0, 'diffyard.case('.length);
+  let handle: FileHandle | null = null;
+  try {
+    handle = await open(join(runDir, name), 'r');
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(prefix.length), 0, prefix.length, 0);
+    return buffer.toString('utf8', 0, bytesRead) === prefix;
+  } catch {
+    return false;
+  } finally {
+    await handle?.close();
   }
 }
 
@@ -660,6 +718,16 @@ async function applyOverrides(config: Config, values: Values): Promise<Config> {
     next.runId = values.into;
     next.runFolder = true;
   }
+
+  // The name becomes a folder that is written into and pruned, so it has to
+  // be one folder inside the output directory and not a way out of it.
+  if (next.runId && !isFolderName(next.runId)) {
+    throw new ConfigError(
+      `"${next.runId}" is not a run name: it has to be a single folder name, without / or \\ and not . or ..`
+    );
+  }
+
+  if (typeof values.into === 'string') await assertMergeable(join(next.outDir, values.into));
 
   if (values.unfinished === true) {
     // The comparisons that came back with nothing, read out of the report

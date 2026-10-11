@@ -156,6 +156,18 @@ describe('the command a result carries', () => {
     assert.deepEqual(readdirSync(out).filter((name) => name.startsWith('20')), [], 'with no run folder beside it');
   });
 
+  it('works out the carry-on line again over the merged report', async () => {
+    const { dir, config, out } = project();
+    await diffyard(dir, [config, '--run-id', 'cut', '--run-timeout', '1', '--no-fail']);
+    assert.match(results(out, 'cut').commands.unfinished ?? '', /--unfinished/, 'a cut-off run offers it');
+
+    await diffyard(dir, [config, '--unfinished', '--into', 'cut']);
+
+    const after = results(out, 'cut');
+    assert.ok(after.comparisons.every((entry) => entry.status !== 'timeout'), 'every case came back');
+    assert.equal(after.commands.unfinished, null, 'so there is nothing left to carry on with');
+  });
+
   it('leaves the markup diff of what it did not run standing', async () => {
     const { dir, config, out } = project();
     await diffyard(dir, [config]);

@@ -15,7 +15,7 @@ import { renderReport } from './report/index.js';
 import { INDEX_FILE, POOL_DIR, call, caseFile, forDelivery, readCase, withDetail } from './report/pool.js';
 import type { CaseDetail } from './report/pool.js';
 import { SCHEMA_FILENAME, SCHEMA_URL, schemaJson } from './schema.js';
-import { run } from './runner.js';
+import { run, runCommandsFor } from './runner.js';
 import { PREFERRED_PORT, serveReport } from './serve.js';
 import { ReuseError } from './reuse.js';
 import {
@@ -242,6 +242,11 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
    */
   const stopping = new AbortController();
   let asked = false;
+
+  // A partial run joins the report it was read from rather than replacing it.
+  // --into says so by naming the folder; --unfinished says so by having taken its
+  // list out of what is already there.
+  const partial = typeof values.into === 'string' || values.unfinished === true;
   /** Chunks already on disk, so a snapshot writes only what is new. */
   const laid = new Set<string>();
 
@@ -338,11 +343,7 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
     process.off('SIGTERM', interrupt);
   }
 
-  // A partial run joins the report it was read from rather than replacing it.
-  // --into says so by naming the folder; --unfinished says so by having taken its
-  // list out of what is already there.
-  const partial = typeof values.into === 'string' || values.unfinished === true;
-  const merged = partial ? await mergeInto(result) : result;
+  const merged = partial ? await mergeInto(result, config) : result;
   const artifact = await writeArtifact(merged, config, values);
 
   write(summary(result, artifact, width, merged));
@@ -375,7 +376,7 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
  * durationMs are left alone -- so a comparison that ran later can be told
  * apart by its own `ranAt`, and the report says which ones those are.
  */
-async function mergeInto(result: RunResult): Promise<RunResult> {
+async function mergeInto(result: RunResult, config: Config): Promise<RunResult> {
   let previous: RunResult;
   try {
     previous = JSON.parse(await readFile(join(result.outDir, 'results.json'), 'utf8')) as RunResult;
@@ -433,6 +434,10 @@ async function mergeInto(result: RunResult): Promise<RunResult> {
     errored: comparisons.filter((entry) => entry.status === 'error' || entry.status === 'timeout').length,
     skipped: count('skipped'),
     reuse: result.reuse ?? previous.reuse,
+    // Worked out again over what the report now holds: an --unfinished that
+    // fixed the last broken case leaves nothing to carry on with, and a run
+    // that added broken ones leaves something.
+    commands: runCommandsFor(config, previous.runId, comparisons),
   };
 }
 

@@ -111,6 +111,31 @@ diffyard run diffyard.yaml --case shop--checkout--desktop --into 2026-08-28_09-1
 standing, so the agent can fix one thing at a time against a report that stays
 whole.
 
+## One report per task
+
+Left to itself, an agent tends to answer every new question with a new run —
+and every run without `--into` is a new folder under `.diffyard-report/`. After
+an hour there are a dozen reports, each holding a slice of the work, and nobody
+can say which one is current.
+
+So the server tells it to stay in the report it started. A page that turns out
+to matter is a scenario added to the same config and run into that report:
+
+```bash
+diffyard run diffyard.yaml --filter pricing --into 2026-08-28_09-16-03-24f7ce
+```
+
+`--into` adds the comparisons the report did not have yet, replaces the ones it
+ran and keeps the rest. The same flag carries a fix (`--case`), the captures
+that broke (`--unfinished`), a rerun of everything, and a rerun with one side
+kept (`--reuse b`). Where the project already has a config for the site, the
+agent extends it rather than drafting another from `explore`.
+
+A second report is still allowed — a different pair of sites, or a state worth
+keeping untouched to hold a later one against. But the agent is asked to name
+the reason, and to say it when it reports back, so a new folder is a decision
+rather than a habit.
+
 ## Why nothing here runs a comparison
 
 It would be easy to expose `run` as a tool, and it would be worse in three

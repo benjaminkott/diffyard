@@ -24,7 +24,11 @@ smoke test of that site instead. It is a command line tool.
 
 Call diffyard_usage once to get its path and how to drive it, then run it in your
 shell. There are no tools here that run comparisons or read results: the command
-writes files, and you can read those directly.`;
+writes files, and you can read those directly.
+
+Keep a task to one config and one report: extend the config and run the new or
+changed parts back into the report with --into, rather than starting a new one
+each time. A second report needs a reason you can name.`;
 
 /**
  * Nothing the server hands out changes while it runs: the usage text, the
@@ -117,7 +121,8 @@ Commands
       Opens a page and reports what a config needs to know about it: the
       consent banner, the elements that open menus, the internal links worth
       comparing, the content that changes on its own — plus a config draft.
-      Start here for a site you do not know.
+      Start here for a site you do not know. Where the project already has a
+      config for it, extend that one instead of drafting another.
 
   ${cli} init diffyard.yaml
       Writes an annotated config plus diffyard.schema.json next to it. The first
@@ -143,7 +148,8 @@ Commands
       is usually the slower of the two because it goes over the network. Shots
       whose settings no longer match are captured again by themselves, and the
       run says which side it reused and how old it is. --reuse-from <run> picks
-      a particular run; --refresh <side> takes one side fresh again.
+      a particular run; --refresh <side> takes one side fresh again. Add
+      --into <run> to stay in the report you are working in.
 
   ${cli} schema
       Writes just diffyard.schema.json.
@@ -190,6 +196,27 @@ Reading the results
   where on the page it sits. results.json does not carry the markup diff
   itself: on a large run that is most of the file, and the .patch is the same
   thing in the form worth reading.
+
+Working in one report
+  A report is the record of one piece of work, and it grows with that work
+  rather than being started over. After the first run, keep running into its
+  folder — <run> below is its name under .diffyard-report/:
+
+    a page or state to add     add the scenario to the same config, then
+                               ${cli} run diffyard.yaml --filter <name> --into <run>
+    a finding fixed            ${cli} run diffyard.yaml --case <id> --into <run>
+    captures that broke        ${cli} run diffyard.yaml --unfinished --into <run>
+    all of it again            ${cli} run diffyard.yaml --into <run>
+
+  --into replaces the entries it ran, adds the ones the report did not have
+  yet and leaves every other one standing. Without it, a run starts a new
+  report beside the old one.
+
+  So a new report has to be worth one, and you should be able to say why —
+  and say it when you report back: a different pair of sites, or a state to
+  keep untouched and hold a later one against. Checking again is not a
+  reason; that is --into. Several reports for one task leave the user to work
+  out which of them is current.
 
 Two things decide whether a comparison is meaningful. A consent banner has to
 be accepted rather than removed, because an overlay left in place swallows the

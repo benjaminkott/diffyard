@@ -120,6 +120,18 @@ describe('a client of the 2026-07-28 revision', () => {
     assert.match(usage, /^diffyard \d+\.\d+\.\d+/);
     assert.ok(usage.includes(SERVER.replace('diffyard-mcp.mjs', 'diffyard.mjs')), 'names the sibling CLI');
   });
+
+  it('is told to keep working in one report rather than starting new ones', async () => {
+    const replies = await talk([
+      { id: 1, method: 'server/discover', params: { _meta: MODERN } },
+      { id: 2, method: 'tools/call', params: { name: 'diffyard_usage', arguments: {}, _meta: MODERN } },
+    ]);
+    const usage = first(replies.get(2)?.result?.content as Array<{ text: string }>, 'the usage').text;
+
+    assert.match(String(replies.get(1)?.result?.instructions), /one report/);
+    assert.match(usage, /--filter <name> --into <run>/);
+    assert.match(usage, /--unfinished --into <run>/);
+  });
 });
 
 describe('a client that still opens with initialize', () => {

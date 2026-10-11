@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { request } from 'node:http';
 import { after, before, describe, it } from 'node:test';
 import { serveReport } from '../dist/serve.js';
 import { solidPng } from './helpers/server.ts';
@@ -171,6 +172,47 @@ describe('serving a report', () => {
       () => serveReport(join(workDir, 'run-one'), { port: serving.port, strict: true }),
       (error: NodeJS.ErrnoException) => error.code === 'EADDRINUSE'
     );
+  });
+
+  it('moves a run asked for without its slash to the address its page reads from', async () => {
+    // The page asks for data/run.js; from /run-one that is /data/run.js, which
+    // is nothing, and the report comes up blank.
+    const listing = await serveReport(workDir, { port: 0 });
+
+    try {
+      const answer = await fetch(`${listing.url}run-one?scenario=home`, { redirect: 'manual' });
+
+      assert.equal(answer.status, 302);
+      assert.equal(answer.headers.get('location'), '/run-one/?scenario=home', 'keeping what was asked');
+
+      const followed = await fetch(`${listing.url}run-one`);
+      assert.equal(followed.url, `${listing.url}run-one/`);
+      assert.match(await followed.text(), /<title>report<\/title>/);
+    } finally {
+      await listing.close();
+    }
+  });
+
+  it('never sends a redirect off to another host', async () => {
+    // A path that resolves to //run-one would, sent back as it is, be read
+    // as a link to a host called run-one. fetch tidies such a path away
+    // before sending it, so this one goes out as written.
+    const listing = await serveReport(workDir, { port: 0 });
+
+    try {
+      const location = await new Promise<string | undefined>((answered, failed) => {
+        request({ port: listing.port, host: '127.0.0.1', path: '/x/..//run-one' }, (answer) => {
+          answer.resume();
+          answered(answer.headers.location);
+        })
+          .on('error', failed)
+          .end();
+      });
+
+      assert.equal(location, '/run-one/');
+    } finally {
+      await listing.close();
+    }
   });
 
   it('lists the runs when pointed at the folder that holds them', async () => {

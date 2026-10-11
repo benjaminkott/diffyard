@@ -146,7 +146,8 @@ async function answer(
   target: string,
   response: import('node:http').ServerResponse
 ): Promise<void> {
-  const asked = decodeURIComponent(new URL(target, 'http://localhost').pathname);
+  const url = new URL(target, 'http://localhost');
+  const asked = decodeURIComponent(url.pathname);
 
   // Everything under the folder that was served, and nothing above it: a
   // report links to its own files by relative path, and an address that
@@ -168,6 +169,20 @@ async function answer(
   }
 
   if (entry.isDirectory()) {
+    // A report finds its data by relative path, and a relative path resolves
+    // against the last slash: served at /run, the page asks for /data/run.js
+    // and comes up blank. Moved to /run/, it asks for /run/data/run.js. The
+    // leading slashes are folded into one so the address cannot read as
+    // //another-host/.
+    if (!asked.endsWith('/')) {
+      response.writeHead(302, {
+        location: `${url.pathname.replace(/^\/+/, '/')}/${url.search}`,
+        'cache-control': 'no-store',
+      });
+      response.end();
+      return;
+    }
+
     const index = join(path, 'index.html');
     try {
       await stat(index);

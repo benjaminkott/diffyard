@@ -1,12 +1,19 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { PNG } from 'pngjs';
-import { align } from '../dist/align.js';
-import type { RowSignatures } from '../dist/align.js';
+import { align, BUDGET } from '../dist/align.js';
+import type { Edit, RowSignatures } from '../dist/align.js';
 
 /** One bucket per row, so a plain list of numbers reads as a page of rows. */
 function rows(...values: number[]): RowSignatures {
   return { values: Float32Array.from(values), buckets: 1, count: values.length };
+}
+
+/** The alignment of two short sequences, which always fit the budget. */
+function aligned(a: RowSignatures, b: RowSignatures): Edit[] {
+  const edits = align(a, b);
+  assert.ok(edits, 'aligned within the budget');
+  return edits;
 }
 import { diffImages } from '../dist/diff.js';
 
@@ -51,24 +58,24 @@ function page(height: number, options: { insertAt?: number; insert?: number; inv
 
 describe('align', () => {
   it('matches identical sequences', () => {
-    const edits = align(rows(10, 60, 110), rows(10, 60, 110));
+    const edits = aligned(rows(10, 60, 110), rows(10, 60, 110));
     assert.deepEqual(edits.map((edit) => edit.type), ['match', 'match', 'match']);
   });
 
   it('reports an insertion as an addition, not as a wall of changes', () => {
-    const edits = align(rows(10, 60, 110), rows(10, 200, 60, 110));
+    const edits = aligned(rows(10, 60, 110), rows(10, 200, 60, 110));
     assert.deepEqual(edits.map((edit) => edit.type), ['match', 'add', 'match', 'match']);
   });
 
   it('pairs a removal and an addition into a change', () => {
     // Myers alone would call this "one gone, one arrived", which counts the
     // same row twice.
-    const edits = align(rows(10, 60, 110), rows(10, 200, 110));
+    const edits = aligned(rows(10, 60, 110), rows(10, 200, 110));
     assert.deepEqual(edits.map((edit) => edit.type), ['match', 'change', 'match']);
   });
 
   it('keeps the surplus when the blocks differ in length', () => {
-    const types = align(rows(10, 60, 110, 160), rows(10, 200, 230, 250, 160)).map((edit) => edit.type);
+    const types = aligned(rows(10, 60, 110, 160), rows(10, 200, 230, 250, 160)).map((edit) => edit.type);
     assert.equal(types.filter((type) => type === 'change').length, 2);
     assert.equal(types.filter((type) => type === 'add').length, 1);
   });
@@ -147,20 +154,60 @@ describe('rows that only resemble each other', () => {
     const a = rows(10, 20, 30, 40);
     const b = rows(11, 21, 31, 41);
 
-    assert.deepEqual(align(a, b).map((edit) => edit.type), ['match', 'match', 'match', 'match']);
+    assert.deepEqual(aligned(a, b).map((edit) => edit.type), ['match', 'match', 'match', 'match']);
   });
 
   it('finds a shift through rows that merely resemble each other', () => {
     const a = rows(10, 20, 30, 40, 50);
     const b = rows(11, 200, 21, 31, 41, 51);
 
-    const edits = align(a, b);
+    const edits = aligned(a, b);
     assert.equal(edits.filter((edit) => edit.type === 'add').length, 1);
     assert.equal(edits.filter((edit) => edit.type === 'match').length, 5);
   });
 
   it('does not pair rows with nothing in common', () => {
-    const edits = align(rows(10, 20), rows(200, 250));
+    const edits = aligned(rows(10, 20), rows(200, 250));
     assert.equal(edits.filter((edit) => edit.type === 'match').length, 0);
+  });
+});
+
+/**
+ * Two pages too far apart in length to be one page shifted.
+ *
+ * The band has to cover the difference in length, so its size grows with one
+ * height times the difference: a twenty-thousand-row page against a short
+ * error page asked for three gigabytes, once per worker, and the whole run
+ * was killed with it.
+ */
+describe('two pages too far apart in length', () => {
+  const blank = (count: number): RowSignatures => ({ values: new Float32Array(count), buckets: 1, count });
+
+  /** A white page of the given height, as pixels rather than a file. */
+  const white = (height: number) => ({ data: Buffer.alloc(16 * height * 4, 255), width: 16, height });
+
+  it('are not aligned at all, rather than at any cost', () => {
+    assert.equal(align(blank(20_000), blank(900)), null);
+  });
+
+  it('are still aligned up to the budget', () => {
+    // As many rows as fit with the narrowest band, and one more that does not.
+    const most = Math.floor(BUDGET / (2 * 96 + 1)) - 1;
+    assert.ok(align(blank(most), blank(most - 1)));
+    assert.equal(align(blank(most + 1), blank(most)), null);
+    assert.ok(align(blank(10_000), blank(9_000)), 'a thousand rows more is still a page that moved');
+  });
+
+  it('are compared by position instead', () => {
+    const a = white(20_000);
+    const b = white(900);
+
+    const { result } = diffImages(a, b, OPTIONS);
+    const positional = diffImages(a, b, { ...OPTIONS, alignRows: false }).result;
+
+    assert.equal(result.aligned, null);
+    assert.equal(result.unaligned, null);
+    assert.equal(result.diffPixels, positional.diffPixels);
+    assert.equal(result.height, 20_000);
   });
 });

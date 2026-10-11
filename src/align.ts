@@ -37,13 +37,28 @@ const SAME = 6;
 const GAP = 0.6;
 
 /**
+ * How many cells of the band one alignment may hold: 128 MB of scores.
+ *
+ * The band has to be as wide as the difference in length, so its size grows
+ * with the height of one page times the difference between the two. A page of
+ * twelve thousand rows against a nine-hundred-row error page took a gigabyte,
+ * twenty thousand took three, once per worker -- and the run was killed
+ * outright, every other page with it. Two pages that far apart are not one
+ * page shifted, and the positional comparison is the honest answer for them;
+ * a page of a hundred thousand rows that only moved still fits.
+ */
+export const BUDGET = 32_000_000;
+
+/**
  * Aligns two sequences of row signatures.
  *
  * The search runs in a band around the diagonal: a row that moved by more than
  * a screenful is not the same row any more, and a full quadratic search over a
  * page eight thousand rows tall is not worth its time.
+ *
+ * Null where the band would not fit the budget, and nothing was aligned.
  */
-export function align(a: RowSignatures, b: RowSignatures): Edit[] {
+export function align(a: RowSignatures, b: RowSignatures): Edit[] | null {
   const rowsA = a.count;
   const rowsB = b.count;
 
@@ -58,6 +73,7 @@ export function align(a: RowSignatures, b: RowSignatures): Edit[] {
   // page falls outside the band.
   const band = Math.min(Math.max(BAND, Math.abs(rowsA - rowsB) + 8), Math.max(rowsA, rowsB));
   const width = 2 * band + 1;
+  if ((rowsA + 1) * width > BUDGET) return null;
 
   // The best score reachable from (i, j), stored as a band around the
   // diagonal: index (i * width) + (j - i + band).

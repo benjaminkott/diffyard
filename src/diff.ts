@@ -98,9 +98,13 @@ export function diffImages(bufferA: Source, bufferB: Source, options: DiffOption
 
   const positional = comparePositionally(a, b, options, rects);
 
-  if (!options.alignRows || a.width !== b.width) {
-    // Alignment works row by row; two pages of different width have nothing to
-    // line up, and the positional comparison is the honest answer.
+  // Alignment works row by row; two pages of different width have nothing to
+  // line up, and two too far apart in length to line up within the budget
+  // are not one page shifted. Either way the positional comparison is the
+  // honest answer.
+  const aligned = options.alignRows && a.width === b.width ? compareAligned(a, b, options, rects) : null;
+
+  if (!aligned) {
     return {
       result: {
         ...positional.stats,
@@ -111,8 +115,6 @@ export function diffImages(bufferA: Source, bufferB: Source, options: DiffOption
       image: positional.image,
     };
   }
-
-  const aligned = compareAligned(a, b, options, rects);
 
   if (aligned.stats.ratio >= positional.stats.ratio) {
     // No shift worth taking out. Reporting the alignment anyway would make two
@@ -201,9 +203,10 @@ function compareAligned(
   b: PNG,
   options: DiffOptions,
   rects: Rect[]
-): { image: PNG; stats: Stats; shift: NonNullable<DiffResult['aligned']> } {
+): { image: PNG; stats: Stats; shift: NonNullable<DiffResult['aligned']> } | null {
   const width = a.width;
   const edits = align(signatures(a), signatures(b));
+  if (!edits) return null;
 
   const image = new PNG({ width, height: Math.max(1, edits.length) });
   const rowA = new PNG({ width, height: 1 });

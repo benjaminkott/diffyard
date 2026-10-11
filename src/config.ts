@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -129,12 +130,29 @@ function normalise(raw: Record<string, unknown>, configDir: string, file: string
   }
 
   const names = new Set<string>();
+  // Keyed by what a comparison is filed under rather than by what the file
+  // calls it: the shots, the report entry and a later reuse all go by the id,
+  // so two names that make the same id would quietly write over each other.
+  const ids = new Map<string, string>();
   for (const scenario of scenarios) {
     const full = qualify(scenario);
     if (names.has(full)) {
       throw new ConfigError(`Duplicate scenario: "${full}"`);
     }
     names.add(full);
+
+    for (const viewport of scenario.viewports) {
+      const id = comparisonId(scenario.group, scenario.name, viewport.name);
+      const here = `"${full}" @ ${viewport.name}`;
+      const there = ids.get(id);
+      if (there !== undefined) {
+        throw new ConfigError(
+          `Scenarios ${there} and ${here} would both be filed as "${id}", and one would ` +
+            "overwrite the other's screenshots. Names are compared without case or punctuation; rename one."
+        );
+      }
+      ids.set(id, here);
+    }
 
     assertAddressable(scenario, 'a', scenario.sideA ?? a);
     if (b) assertAddressable(scenario, 'b', scenario.sideB ?? b);
@@ -603,7 +621,12 @@ function parseViewports(value: unknown, where: string): Viewport[] {
   if (isRecord(value)) {
     const entries = Object.entries(value);
     if (entries.length === 0) return [DEFAULT_VIEWPORT];
-    return widestFirst(entries.map(([name, entry]) => parseViewport(entry, name, `${where}.${name}`)));
+    return widestFirst(
+      distinctViewports(
+        entries.map(([name, entry]) => parseViewport(entry, name, `${where}.${name}`)),
+        where
+      )
+    );
   }
 
   if (!Array.isArray(value)) {
@@ -611,19 +634,18 @@ function parseViewports(value: unknown, where: string): Viewport[] {
   }
   if (value.length === 0) return [DEFAULT_VIEWPORT];
 
-  return widestFirst(
-    value.map((entry, index) => {
-      const at = `${where}[${index}]`;
-      if (!isRecord(entry)) {
-        throw new ConfigError(`${at} must be a mapping like { name: mobile, width: 375, height: 812 }`);
-      }
-      const name = entry['name'];
-      if (typeof name !== 'string') {
-        throw new ConfigError(`${at} needs a \`name\`, or declare viewports as a mapping keyed by name`);
-      }
-      return parseViewport(entry, name, at);
-    })
-  );
+  const listed = value.map((entry, index) => {
+    const at = `${where}[${index}]`;
+    if (!isRecord(entry)) {
+      throw new ConfigError(`${at} must be a mapping like { name: mobile, width: 375, height: 812 }`);
+    }
+    const name = entry['name'];
+    if (typeof name !== 'string') {
+      throw new ConfigError(`${at} needs a \`name\`, or declare viewports as a mapping keyed by name`);
+    }
+    return parseViewport(entry, name, at);
+  });
+  return widestFirst(distinctViewports(listed, where));
 }
 
 /**
@@ -639,6 +661,26 @@ function parseViewports(value: unknown, where: string): Viewport[] {
  */
 function widestFirst(viewports: Viewport[]): Viewport[] {
   return [...viewports].sort((left, right) => right.width - left.width);
+}
+
+/**
+ * A viewport's name ends up in the id of every comparison taken in it, so
+ * two that differ only in case or punctuation would share every id there is.
+ * Said once, here, rather than once per page.
+ */
+function distinctViewports(viewports: Viewport[], where: string): Viewport[] {
+  const seen = new Map<string, string>();
+  for (const { name } of viewports) {
+    const other = seen.get(slug(name));
+    if (other !== undefined) {
+      throw new ConfigError(
+        `\`${where}\` declares "${other}" and "${name}", which are filed under the same name. ` +
+          'Names are compared without case or punctuation; rename one.'
+      );
+    }
+    seen.set(slug(name), name);
+  }
+  return viewports;
 }
 
 function parseViewport(entry: unknown, name: string, at: string): Viewport {
@@ -904,13 +946,53 @@ function resolveOutput(value: string): string {
   return isAbsolute(value) ? value : resolve(process.cwd(), value);
 }
 
+/**
+ * What a comparison is filed under: its shots, its entry in the report, and
+ * what a later run reuses it by.
+ */
+export function comparisonId(group: string | null, name: string, viewport: string): string {
+  return `${group ? `${slug(group)}--` : ''}${slug(name)}--${slug(viewport)}`;
+}
+
+/**
+ * A name as it can appear in a file name and an address.
+ *
+ * Plain ASCII comes out as it always has, because every report and every
+ * reuse on disk is filed under it. Only letters outside ASCII are treated
+ * differently from how they once were — they used to vanish, so "Über uns"
+ * became "ber-uns" and every Japanese page title became "index". Accented
+ * Latin is spelled without its accents now, and a name that still loses
+ * letters after that carries a short hash of itself, so two names in a script
+ * with no ASCII spelling do not come out the same.
+ */
 export function slug(value: string): string {
-  const cleaned = value
-    .replace(/^https?:\/\//, '')
+  const text = value.replace(/^https?:\/\//, '');
+  const latin = transliterate(text);
+  const cleaned = latin
     .replace(/[^a-zA-Z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .toLowerCase();
-  return cleaned || 'index';
+
+  if (!/[\p{L}\p{N}]/u.test(latin.replace(/[\x00-\x7f]+/g, ''))) {
+    return cleaned || 'index';
+  }
+
+  const tag = createHash('sha256').update(text.normalize('NFC')).digest('hex').slice(0, 8);
+  return cleaned ? `${cleaned}-${tag}` : tag;
+}
+
+/** The Latin letters that are more than a base letter and an accent. */
+const LATIN: Record<string, string> = {
+  ß: 'ss', ẞ: 'SS', æ: 'ae', Æ: 'AE', œ: 'oe', Œ: 'OE', ø: 'o', Ø: 'O',
+  ł: 'l', Ł: 'L', đ: 'd', Đ: 'D', ð: 'd', Ð: 'D', þ: 'th', Þ: 'TH', ı: 'i',
+};
+
+function transliterate(value: string): string {
+  if (!/[^\x00-\x7f]/.test(value)) return value;
+  return value
+    .normalize('NFKD')
+    .replace(/\p{M}+/gu, '')
+    .replace(/[ßẞæÆœŒøØłŁđĐðÐþÞı]/g, (letter) => LATIN[letter] ?? letter);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

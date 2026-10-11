@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, describe, it } from 'node:test';
-import { ConfigError, loadConfig } from '../dist/config.js';
+import { ConfigError, loadConfig, slug } from '../dist/config.js';
 
 const workDir = mkdtempSync(join(tmpdir(), 'diffyard-config-'));
 after(() => rmSync(workDir, { recursive: true, force: true }));
@@ -263,6 +263,63 @@ scenarios:
 `),
       (error: unknown) => error instanceof ConfigError && /Duplicate scenario/.test((error as Error).message)
     );
+  });
+
+  it('rejects two names that would be filed under the same id', () => {
+    for (const [first, second] of [
+      ['Checkout', 'checkout'],
+      ['About us', 'about-us'],
+    ]) {
+      assert.throws(
+        () =>
+          load(
+            `compare:\n  a: https://a.test/\n  b: https://b.test/\nscenarios:\n` +
+              `  - name: ${first}\n    path: /one\n  - name: ${second}\n    path: /two\n`
+          ),
+        (error: unknown) =>
+          error instanceof ConfigError &&
+          (error as Error).message.includes(`"${first}" @ desktop`) &&
+          (error as Error).message.includes(`"${second}" @ desktop`),
+        `${first} / ${second}`
+      );
+    }
+  });
+
+  it('rejects two viewports that would be filed under the same name', () => {
+    assert.throws(
+      () =>
+        load(
+          `compare:\n  a: https://a.test/\n  b: https://b.test/\nbrowser:\n  viewports:\n` +
+            `    Mobile: { width: 375, height: 812 }\n    mobile: { width: 390, height: 844 }\nscenarios:\n  - /\n`
+        ),
+      (error: unknown) => error instanceof ConfigError && /"Mobile" and "mobile"/.test((error as Error).message)
+    );
+  });
+
+  it('keeps names in other scripts apart', () => {
+    const config = load(
+      `compare:\n  a: https://a.test/\n  b: https://b.test/\nscenarios:\n` +
+        `  - name: ホーム\n    path: /\n  - name: 会社概要\n    path: /company\n`
+    );
+    const [home, company] = config.scenarios.map((scenario) => slug(scenario.name));
+    assert.notEqual(home, company);
+    assert.notEqual(home, 'index');
+    assert.match(home!, /^[0-9a-f]{8}$/);
+  });
+
+  it('spells accented Latin without its accents', () => {
+    assert.equal(slug('Über uns'), 'uber-uns');
+    assert.equal(slug('Straße'), 'strasse');
+    assert.equal(slug('Café crème'), 'cafe-creme');
+  });
+
+  it('files plain ASCII names exactly as before', () => {
+    // Every report and reuse on disk is filed under these; a change here
+    // would orphan all of them.
+    assert.equal(slug('/about/team'), 'about-team');
+    assert.equal(slug('https://example.com/Shop?x=1'), 'example-com-shop-x-1');
+    assert.equal(slug('/'), 'index');
+    assert.equal(slug('Home – Start'), 'home-start');
   });
 
   it('accepts differing paths per side', () => {

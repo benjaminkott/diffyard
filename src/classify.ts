@@ -12,6 +12,8 @@
  * the filter worse than no filter.
  */
 
+import { originOf, strip } from './logs.js';
+import type { Origins } from './logs.js';
 import type { Comparison, DiffKind, DiffResult, Hunk, HunkLine, LogSummary, MarkupResult } from './types.js';
 
 /** How far a page has to move before it is worth calling moved. */
@@ -23,6 +25,11 @@ export interface Classifiable {
   markup?: MarkupResult | null | undefined;
   hunks: Hunk[];
   logs: LogSummary | null;
+  /**
+   * Where each side was asked for, so a line its logs share with the other
+   * side's is not one-sided for naming two different hosts.
+   */
+  origins?: Origins | undefined;
   /**
    * Shapes of changed line to leave out, because they turned up nearly
    * everywhere in the run. See classifyRun.
@@ -58,7 +65,7 @@ export function classify(input: Classifiable): DiffKind[] {
 
   // An image that failed on one side is an image difference whether or not the
   // markup mentions it: the src is the same, the picture is not there.
-  if (logs?.differs && oneSidedResourceFailure(logs)) kinds.add('image');
+  if (logs?.differs && oneSidedResourceFailure(logs, input.origins ?? {})) kinds.add('image');
 
   // A picture the two systems produced two files of. Not a difference in the
   // page, and worth saying rather than silently leaving out of the number.
@@ -201,6 +208,9 @@ export function classifyRun(comparisons: Comparison[]): string[] {
       markup: comparison.markup,
       hunks: comparison.markupHunks ?? [],
       logs: comparison.logs,
+      // The same as the logs were summarised with, so the kind and the
+      // summary agree on what only one side said.
+      origins: { a: originOf(comparison.urlA), b: originOf(comparison.urlB) },
       ignore,
     });
   }
@@ -240,15 +250,24 @@ function sameSet(left: Set<string>, right: Set<string>): boolean {
   return true;
 }
 
-/** Whether one side alone failed to fetch something. */
-function oneSidedResourceFailure(logs: LogSummary): boolean {
-  const texts = (side: 'a' | 'b') => new Set(logs[side].map((entry) => entry.text));
+/**
+ * Whether one side alone failed to fetch something.
+ *
+ * With each side's own origin taken out, as the summary compares them: the
+ * logs name the host, so the same 404 on both sides reads as two different
+ * lines, and a page that logged one more harmless warning on one side had
+ * its shared missing logo filed as an image that changed.
+ */
+function oneSidedResourceFailure(logs: LogSummary, origins: Origins): boolean {
+  const key = (side: 'a' | 'b', text: string) => strip(text, origins[side]);
+  const texts = (side: 'a' | 'b') => new Set(logs[side].map((entry) => key(side, entry.text)));
   const other = { a: texts('b'), b: texts('a') };
 
   return (['a', 'b'] as const).some((side) =>
     logs[side].some(
       (entry) =>
-        (entry.kind === 'httperror' || entry.kind === 'requestfailed') && !other[side].has(entry.text)
+        (entry.kind === 'httperror' || entry.kind === 'requestfailed') &&
+        !other[side].has(key(side, entry.text))
     )
   );
 }

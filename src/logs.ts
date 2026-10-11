@@ -21,7 +21,7 @@ export interface Origins {
 }
 
 /** Replaces a side's own origin with a marker, for comparison only. */
-function strip(text: string, origin: string | undefined): string {
+export function strip(text: string, origin: string | undefined): string {
   return origin ? text.split(origin).join('<origin>') : text;
 }
 

@@ -183,6 +183,69 @@ describe('reading the kind off what the page said', () => {
     const kinds = classify({ diff: diff(), markup: SAME, hunks: [], logs: both });
     assert.ok(!kinds.includes('image'));
   });
+
+  describe('logged from two hosts', () => {
+    const origins = { a: 'https://www.example.com', b: 'https://stage.example.com' };
+
+    // Both sides miss the same logo, each on its own host, and B says one
+    // harmless thing more -- which is what makes the two logs differ at all.
+    const shared = (extra: LogSummary['b'] = []): LogSummary => ({
+      a: [{ kind: 'httperror', text: `HTTP 404 ${origins.a}/logo.png`, source: null, count: 1 }],
+      b: [
+        { kind: 'httperror', text: `HTTP 404 ${origins.b}/logo.png`, source: null, count: 1 },
+        ...extra,
+      ],
+      onlyA: 0,
+      onlyB: extra.length,
+      errorsA: 1,
+      errorsB: 1,
+      differs: extra.length > 0,
+      seriousOnOneSide: 0,
+    });
+    const warning = { kind: 'warning' as const, text: 'Slow network detected', source: null, count: 1 };
+
+    it('does not call a failure both sides had an image change', () => {
+      const kinds = classify({ diff: diff(), markup: SAME, hunks: [], logs: shared([warning]), origins });
+      assert.deepEqual(kinds, ['rendering']);
+    });
+
+    it('still calls one side fetching from the other host an image change', () => {
+      const logs = shared([warning]);
+      logs.a = [{ kind: 'httperror', text: `HTTP 404 ${origins.b}/logo.png`, source: null, count: 1 }];
+
+      const kinds = classify({ diff: diff(), markup: SAME, hunks: [], logs, origins });
+      assert.ok(kinds.includes('image'));
+    });
+
+    it('takes the hosts from the addresses a run compared', () => {
+      const comparison = {
+        id: 'home',
+        scenario: 'home',
+        group: null,
+        viewport: { name: 'desktop', width: 800, height: 600, deviceScaleFactor: 1 },
+        urlA: `${origins.a}/`,
+        urlB: `${origins.b}/`,
+        status: 'fail',
+        threshold: 0,
+        smoke: null,
+        diff: diff(),
+        markup: SAME,
+        markupHunks: [],
+        logs: shared([warning]),
+        answers: null,
+        kinds: [],
+        files: { a: null, b: null, diff: null, htmlA: null, htmlB: null, patch: null, result: null, pictures: null, detail: null },
+        capture: null,
+        command: '',
+        ranAt: '',
+        error: null,
+        durationMs: 0,
+      } as Comparison;
+
+      classifyRun([comparison]);
+      assert.deepEqual(comparison.kinds, ['rendering']);
+    });
+  });
 });
 
 describe('a comparison with nothing to say', () => {

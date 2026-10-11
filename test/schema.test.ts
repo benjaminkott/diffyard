@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { parse } from 'yaml';
-import { loadConfig } from '../dist/config.js';
+import { loadConfig, parseDuration } from '../dist/config.js';
 import { EXAMPLE_CONFIG } from '../dist/example.js';
 import { CONFIG_SCHEMA, schemaJson } from '../dist/schema.js';
 
@@ -317,5 +317,100 @@ describe('schema and parser agree on every value', () => {
         assert.equal(parserAccepts(config), false, `the parser takes an unknown key in ${where}`);
       });
     }
+  }
+});
+
+/**
+ * A default in the schema is what an editor shows for a key left out; the
+ * parser's is what the run then uses. They disagreed once on the threshold —
+ * 0.001 on the hover, 0 in the run — and a page with one differing pixel in a
+ * thousand failed where the editor said it would pass.
+ */
+describe('schema and parser agree on every default', () => {
+  type Node = Record<string, unknown>;
+
+  /** Every path in the schema that states a default. */
+  function defaults(node: unknown, path: string, out: Map<string, unknown>): Map<string, unknown> {
+    if (typeof node !== 'object' || node === null) return out;
+    const at = node as Node;
+    if ('default' in at) out.set(path, at['default']);
+    for (const [key, child] of Object.entries((at['properties'] ?? {}) as Node)) {
+      defaults(child, path ? `${path}.${key}` : key, out);
+    }
+    for (const [key, child] of Object.entries((at['$defs'] ?? {}) as Node)) defaults(child, `$${key}`, out);
+    if (typeof at['additionalProperties'] === 'object') defaults(at['additionalProperties'], `${path}.*`, out);
+    if (at['items']) defaults(at['items'], `${path}[]`, out);
+    for (const member of (at['oneOf'] ?? []) as unknown[]) defaults(member, path, out);
+    return out;
+  }
+
+  const file = join(workDir, `defaults-${counter++}.yaml`);
+  writeFileSync(
+    file,
+    `compare:\n  a: https://a.test/\n  b: https://b.test/\n` +
+      `browser:\n  viewports:\n    desktop: { width: 1440, height: 900 }\n` +
+      `beforeEach:\n  - steps:\n      - click: "#x"\nscenarios:\n  - path: /\n`
+  );
+  const config = loadConfig(file);
+  const scenario = config.scenarios[0]!;
+  const entry = config.beforeEach[0]!;
+
+  /** Where the parser keeps what each of those paths resolves to. */
+  const resolved: Record<string, unknown> = {
+    'output.dir': config.outDir.split('/').at(-1),
+    'output.runFolder': config.runFolder,
+    'output.title': config.reportTitle,
+    'output.images': config.images,
+    'browser.engine': config.browser,
+    'browser.headless': config.headless,
+    'browser.viewports.*.deviceScaleFactor': config.viewports[0]?.deviceScaleFactor,
+    'browser.colorScheme': config.colorScheme,
+    'browser.reducedMotion': config.reducedMotion,
+    'browser.ignoreHTTPSErrors': config.ignoreHTTPSErrors,
+    'timeouts.action': config.timeout,
+    'timeouts.comparison': config.comparisonTimeout,
+    'timeouts.run': config.runTimeout,
+    'diff.threshold': config.threshold,
+    'diff.pixelThreshold': config.pixelThreshold,
+    'diff.ignoreAntialiasing': config.ignoreAntialiasing,
+    'diff.alignRows': config.alignRows,
+    'stability.freeze': config.freeze,
+    'stability.triggerLazyLoad': config.triggerLazyLoad,
+    'stability.retries': config.retries,
+    'stability.workers': config.workers,
+    'stability.sequential': config.sequential,
+    'reuse.from': config.reuse.from,
+    'reuse.maxAge': config.reuse.maxAge,
+    'logs.enabled': config.logs.enabled,
+    'logs.levels': config.logs.levels,
+    'logs.max': config.logs.max,
+    'logs.failOnDifference': config.logs.failOnDifference,
+    'markup.enabled': config.markup.enabled,
+    'markup.failOnDifference': config.markup.failOnDifference,
+    'markup.ignoreComments': config.markup.ignoreComments,
+    'markup.normalizeWhitespace': config.markup.normalizeWhitespace,
+    'markup.sortAttributes': config.markup.sortAttributes,
+    'markup.ignoreBaseUrl': config.markup.ignoreBaseUrl,
+    'markup.maxHunksInReport': config.markup.maxHunksInReport,
+    '$beforeEachGroup.timeout': entry.timeout,
+    '$beforeEachGroup.required': entry.required,
+    '$beforeEachGroup.once': entry.once,
+    '$scenario.fullPage': scenario.fullPage,
+    '$scenario.waitUntil': scenario.waitUntil,
+    '$scenario.skip': scenario.skip,
+    '$scenario.only': scenario.only,
+  };
+
+  /** Written the way a person would in the schema; the parser keeps milliseconds. */
+  const readable: Record<string, (value: unknown) => unknown> = {
+    'reuse.maxAge': (value) => parseDuration(value, Number.NaN, 'reuse.maxAge'),
+  };
+
+  for (const [path, stated] of defaults(CONFIG_SCHEMA, '', new Map())) {
+    it(`for ${path}`, () => {
+      assert.ok(path in resolved, `${path} has a default in the schema; say here where the parser keeps it`);
+      const expected = readable[path] ? readable[path](stated) : stated;
+      assert.deepEqual(resolved[path], expected);
+    });
   }
 });

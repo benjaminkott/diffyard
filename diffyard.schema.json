@@ -332,8 +332,8 @@
           "type": "number",
           "minimum": 0,
           "maximum": 1,
-          "default": 0.001,
-          "description": "Share of differing pixels a comparison may have and still pass."
+          "default": 0,
+          "description": "Share of differing pixels a comparison may have and still pass. Left out, no pixel may differ."
         },
         "pixelThreshold": {
           "type": "number",

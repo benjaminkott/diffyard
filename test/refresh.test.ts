@@ -122,6 +122,40 @@ describe('the command a result carries', () => {
     assert.equal(untouched.ranAt, before.comparisons.find((e) => e.scenario === 'index')?.ranAt);
   });
 
+  it('names where the run was written, so the line leads back to it', async () => {
+    const { dir, config } = project();
+    await diffyard(dir, [config, '--out', 'elsewhere']);
+
+    const out = join(dir, 'elsewhere');
+    const runId = latest(out);
+    const target = results(out, runId).comparisons.find((entry) => entry.scenario === 'about');
+    assert.match(target?.command ?? '', /--out elsewhere/);
+
+    const [, ...args] = target!.command.split(' ');
+    await diffyard(dir, args.slice(1));
+
+    assert.equal(results(out, runId).total, 2, 'it went into that report');
+    assert.ok(!existsSync(join(dir, 'out')), 'and not into the one the config names');
+  });
+
+  it('works on a report written straight into its output directory', async () => {
+    const { dir, config } = project();
+    await diffyard(dir, [config, '--out', 'flat', '--no-run-folder']);
+
+    const out = join(dir, 'flat');
+    const before = JSON.parse(readFileSync(join(out, 'results.json'), 'utf8')) as RunResult;
+    const target = before.comparisons.find((entry) => entry.scenario === 'about');
+    assert.match(target?.command ?? '', /--no-run-folder/);
+
+    const [, ...args] = target!.command.split(' ');
+    await diffyard(dir, args.slice(1));
+
+    const after = JSON.parse(readFileSync(join(out, 'results.json'), 'utf8')) as RunResult;
+    assert.equal(after.total, 2, 'merged in place, the other entry kept');
+    assert.ok(after.refreshedAt, 'as a refresh of that report');
+    assert.deepEqual(readdirSync(out).filter((name) => name.startsWith('20')), [], 'with no run folder beside it');
+  });
+
   it('leaves the markup diff of what it did not run standing', async () => {
     const { dir, config, out } = project();
     await diffyard(dir, [config]);

@@ -555,9 +555,10 @@ export function runCommandsFor(
     a: twoSided ? line(config, runId, keeping('b'), false) : null,
     b: twoSided ? line(config, runId, keeping('a'), false) : null,
     // It reads the report to find them, so it has to name it. A config that
-    // fixes output.runId has, and one that does not needs --into.
+    // fixes output.runId has, and so has a run written straight into its
+    // output directory; any other needs --into.
     unfinished: unfinished
-      ? line(config, runId, config.runId ? ['--unfinished'] : ['--unfinished', `--into ${runId}`])
+      ? line(config, runId, config.runId || !config.runFolder ? ['--unfinished'] : ['--unfinished', `--into ${runId}`])
       : null,
   };
 }
@@ -568,6 +569,12 @@ export function runCommandsFor(
  */
 function line(config: Config, runId: string, flags: string[], mirrorReuse = true): string {
   const parts = ['diffyard run', quote(config.file), ...flags];
+
+  // Where the run was written is part of naming it: without these the line
+  // would read and write the config's own output directory, a different
+  // report from the one it was copied out of.
+  if (config.outFlag !== undefined) parts.push(`--out ${quote(config.outFlag)}`);
+  if (!config.runFolder) parts.push('--no-run-folder');
 
   // A line that already names what to reuse is not also given the run's own
   // rule: it is here to say something different from what the run did.

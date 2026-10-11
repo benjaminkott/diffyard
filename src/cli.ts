@@ -436,6 +436,11 @@ async function mergeInto(result: RunResult): Promise<RunResult> {
   };
 }
 
+/** The folder a run named by the config and flags writes its report into. */
+function reportDir(config: Config): string {
+  return config.runFolder && config.runId ? join(config.outDir, config.runId) : config.outDir;
+}
+
 /** Whether a run name stays one folder inside the output directory. */
 function isFolderName(name: string): boolean {
   return name !== '' && name !== '.' && name !== '..' && !/[/\\]/.test(name);
@@ -618,7 +623,10 @@ function pickByIds(scenarios: Config['scenarios'], wanted: string[]): Config['sc
 async function applyOverrides(config: Config, values: Values): Promise<Config> {
   const next: Config = { ...config };
 
-  if (typeof values.out === 'string') next.outDir = resolve(values.out);
+  if (typeof values.out === 'string') {
+    next.outDir = resolve(values.out);
+    next.outFlag = values.out;
+  }
   if (values.headed === true) next.headless = false;
 
   if (typeof values.browser === 'string') {
@@ -715,8 +723,10 @@ async function applyOverrides(config: Config, values: Values): Promise<Config> {
   if (typeof values.into === 'string') {
     // The run writes into that folder, and the artifact is merged rather than
     // replaced, so refreshing one view leaves the other findings standing.
+    // A run written straight into the output directory (--no-run-folder) has
+    // its report there rather than in a folder named after it, and is merged
+    // in place.
     next.runId = values.into;
-    next.runFolder = true;
   }
 
   // The name becomes a folder that is written into and pruned, so it has to
@@ -727,7 +737,7 @@ async function applyOverrides(config: Config, values: Values): Promise<Config> {
     );
   }
 
-  if (typeof values.into === 'string') await assertMergeable(join(next.outDir, values.into));
+  if (typeof values.into === 'string') await assertMergeable(reportDir(next));
 
   if (values.unfinished === true) {
     // The comparisons that came back with nothing, read out of the report
@@ -738,14 +748,14 @@ async function applyOverrides(config: Config, values: Values): Promise<Config> {
     // After --into, because that is one of the two ways the report is named;
     // the other is a config that fixes output.runId, which a suite usually
     // does.
-    if (!next.runId) {
+    if (!next.runId && next.runFolder) {
       throw new ConfigError(
         '--unfinished has to be told which report to read.\n' +
           'Name it with --into, or set output.runId so the suite has a folder of its own.'
       );
     }
 
-    const dir = join(next.outDir, next.runId);
+    const dir = reportDir(next);
     let previous: RunResult;
     try {
       previous = JSON.parse(await readFile(join(dir, 'results.json'), 'utf8')) as RunResult;
@@ -764,7 +774,6 @@ async function applyOverrides(config: Config, values: Values): Promise<Config> {
     }
 
     next.scenarios = pickByIds(next.scenarios, broken.map((entry) => entry.id.toLowerCase()));
-    next.runFolder = true;
 
     if (next.scenarios.length === 0) {
       throw new ConfigError(

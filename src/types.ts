@@ -206,6 +206,12 @@ export interface Config {
   b: SideConfig | null;
   /** Base directory. Each run gets its own folder inside it unless disabled. */
   outDir: string;
+  /**
+   * --out as the caller typed it, when it was given. The commands a report
+   * hands out carry it, or they would write somewhere else than the report
+   * they came from.
+   */
+  outFlag?: string;
   /** Create a timestamped sub-folder per run inside outDir. */
   runFolder: boolean;
   /** Fixed name for that sub-folder; a timestamp is used when null. */

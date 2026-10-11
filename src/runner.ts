@@ -193,6 +193,10 @@ export async function run(config: Config, events: RunEvents = {}): Promise<RunRe
     const workers = Math.max(1, Math.min(config.workers, jobs.length));
     await Promise.all(Array.from({ length: workers }, () => worker()));
 
+    // The last snapshot may still be writing. Left to finish on its own, it
+    // could land after the final report and put a half-done one back.
+    await writing;
+
     // A run cut short still writes a report. What it got through is worth
     // keeping -- twenty minutes of captures -- and what it never reached is
     // named rather than missing, so `--unfinished` carries on from here.

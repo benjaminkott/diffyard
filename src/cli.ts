@@ -281,7 +281,12 @@ async function runCommand(configFile: string, values: Values): Promise<number> {
        * far, and pressing refresh is all it takes to see where the run has
        * got to.
        */
-      onSnapshot: async (snapshot) => {
+      //
+      // Not for a run into an existing report. Its snapshot would hold only
+      // what this run did, written over a report that holds everything -- and
+      // a run killed before the merge would leave it like that. The report
+      // stays as it was until the merged one replaces it.
+      onSnapshot: partial ? undefined : async (snapshot) => {
         const report = await renderReport(snapshot, config, { selfContained: false });
         await mkdir(snapshot.outDir, { recursive: true });
         await writeFile(join(snapshot.outDir, 'index.html'), report.html);
